@@ -1,0 +1,21 @@
+name: Umbrella region compatibility gate
+on:
+  push:
+    paths:
+      - 'config/compatibility/**'
+      - 'tools/validate_regions.py'
+      - 'tests/test_region_manifest.py'
+      - '.github/workflows/region-compatibility.yml'
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate region metadata
+        run: python3 tools/validate_regions.py
+      - name: Test fail-closed policy
+        run: python3 -m unittest discover -s tests -p 'test_region_manifest.py' -v

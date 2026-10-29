@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "device_codename": "kunzite",
+  "hardware_board_observed": "parrot",
+  "reference_model": "25098RA98G",
+  "policy": "deny_unverified",
+  "regions": [
+    {
+      "code": "MIXM",
+      "name": "Global",
+      "status": "reference_only",
+      "firmwares": [
+        {
+          "version": "OS3.0.304.0.WPQMIXM",
+          "observed_model": "25098RA98G",
+          "observed_kernel": "6.6.118-android15-8-ge56cf6b09cca-ab15511674-4k",
+          "source_verified": false,
+          "build_verified": false,
+          "boot_verified": false,
+          "vendor_modules_verified": false
+        }
+      ]
+    },
+    {
+      "code": "IDXM",
+      "name": "Indonesia",
+      "status": "planned",
+      "firmwares": []
+    },
+    {
+      "code": "CNXM",
+      "name": "China",
+      "status": "planned",
+      "firmwares": []
+    },
+    {
+      "code": "EUXM",
+      "name": "EEA",
+      "status": "planned",
+      "firmwares": []
+    },
+    {
+      "code": "INXM",
+      "name": "India",
+      "status": "planned",
+      "firmwares": []
+    },
+    {
+      "code": "TWXM",
+      "name": "Taiwan",
+      "status": "planned",
+      "firmwares": []
+    },
+    {
+      "code": "RUXM",
+      "name": "Russia",
+      "status": "planned",
+      "firmwares": []
+    }
+  ]
+}
