@@ -167,7 +167,15 @@ def main() -> None:
             actual = built_cfg.get(key, "MISSING")
             critical_results[key] = {"expected": expected, "actual": actual}
             if actual != expected:
-                errors.append(f"Critical Kconfig mismatch: {key}={actual} (expected {expected})")
+                if key == "CONFIG_TRIM_UNUSED_KSYMS" and actual == "n":
+                    warnings.append(
+                        "Vendor CONFIG_TRIM_UNUSED_KSYMS=n differs from stock; "
+                        "this vendor configuration is not proof of a GKI KMI failure. "
+                        "Verify the GKI .config, exported symbols, and stock module CRCs "
+                        "before any flashing."
+                    )
+                else:
+                    errors.append(f"Critical Kconfig mismatch: {key}={actual} (expected {expected})")
 
         sig_all = built_cfg.get("CONFIG_MODULE_SIG_ALL", "n")
         critical_results["CONFIG_MODULE_SIG_ALL"] = {
@@ -255,6 +263,11 @@ def main() -> None:
     for vm in vermagics:
         if "android15-8-" not in vm or "4k" not in vm:
             errors.append(f"Incompatible module vermagic KMI/page-size token: {vm}")
+        if vm.split(" ", 1)[0] != manifest["vendor_module_vermagic_observed"]:
+            warnings.append(
+                f"Built vendor module vermagic differs from observed stock: {vm}. "
+                "Module load compatibility is NOT verified; do not flash."
+            )
 
     dtb_files = sorted(dist_dir.glob("*.dtb"))
     dtbo_files = sorted(dist_dir.glob("*.dtbo"))
