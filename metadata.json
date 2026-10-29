@@ -1,0 +1,5 @@
+{
+  "name": "Umbrella Kernel Build & Provenance Console",
+  "description": "Qualcomm Kleaf mixed-build engineering pipeline, Bazel target verification, and compatibility gate console for Umbrella Kernel (Redmi Note 15 5G / kunzite).",
+  "requestFramePermissions": []
+}

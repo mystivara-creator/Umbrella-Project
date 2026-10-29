@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Umbrella Kernel Build &amp; Provenance Console</title>
+    <meta
+      name="description"
+      content="Qualcomm Kleaf mixed-build engineering pipeline, Bazel target verification, and compatibility gate console for Umbrella Kernel (Redmi Note 15 5G / kunzite)."
+    />
+    <meta property="og:title" content="Umbrella Kernel Build &amp; Provenance Console" />
+    <meta
+      property="og:description"
+      content="Qualcomm Kleaf mixed-build engineering pipeline, Bazel target verification, and compatibility gate console for Umbrella Kernel (Redmi Note 15 5G / kunzite)."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="container topbar-inner">
+        <div>
+          <div class="eyebrow">UMBRELLA PROJECT // REDMI NOTE 15 5G (KUNZITE / PARROT SM6475)</div>
+          <h1>Kernel Build &amp; Provenance Engineering Console</h1>
+        </div>
+        <div class="topbar-actions">
+          <button id="refreshBtn" class="btn btn-secondary" type="button">Re-run Gates</button>
+          <a href="/api/bundle.sh" class="btn btn-primary" download="apply-umbrella-fixes.sh">
+            Download Termux Patch (.sh)
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main class="container main-grid">
+      <section class="status-strip" id="statusStrip">
+        <div class="metric-card">
+          <span class="metric-label">CI &amp; Provenance Gates</span>
+          <strong class="metric-value" id="gatesStatus">Memeriksa...</strong>
+          <span class="metric-sub" id="gatesSub">5 repository &amp; unit test gates</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Arsitektur Build</span>
+          <strong class="metric-value mono">qualcomm_kleaf_mixed_build</strong>
+          <span class="metric-sub">GKI 6.6.118 (android15-8) + Vendor 6.6.56</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Toolchain &amp; KMI</span>
+          <strong class="metric-value mono">clang-r510928 (Clang 18)</strong>
+          <span class="metric-sub">4K page | CFI + SCS + MODVERSIONS</span>
+        </div>
+        <div class="metric-card warn-border">
+          <span class="metric-label">Status Keamanan Flash</span>
+          <strong class="metric-value text-amber">NOT APPROVED (FAIL-CLOSED)</strong>
+          <span class="metric-sub">Belum di-push ke remote / belum diuji boot</span>
+        </div>
+      </section>
+
+      <section class="panel span-2">
+        <div class="panel-header">
+          <h2>Fase A — Audit Remote GitHub &amp; Akar Masalah Actions</h2>
+          <span class="mono muted" id="remoteHead">HEAD: memuat...</span>
+        </div>
+        <ul class="finding-list" id="rootCauses"></ul>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Hasil Eksekusi Gate Lokal</h2>
+        </div>
+        <div class="gate-list" id="gateList"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Pinning Komponen Source (40-Hex SHA-1)</h2>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Komponen</th>
+                <th>Path</th>
+                <th>Commit SHA-1</th>
+              </tr>
+            </thead>
+            <tbody id="componentsTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel span-2">
+        <div class="panel-header">
+          <h2>Fase C — Target Bazel Terverifikasi (`tools/bazel query`)</h2>
+          <span class="mono muted">Variant: perf</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Label Bazel</th>
+                <th>Aturan / Macro</th>
+                <th>Peran dalam Mixed Build</th>
+              </tr>
+            </thead>
+            <tbody id="targetsTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel span-2">
+        <div class="panel-header">
+          <h2>Patch Termux Siap Terap (Hanya 6 File Repository Umbrella)</h2>
+          <div class="inline-actions">
+            <button id="copyPatchBtn" class="btn btn-secondary" type="button">Salin Script Patch</button>
+            <button id="copyOverlayBtn" class="btn btn-secondary" type="button">
+              Salin Script Reuse Workspace 19 GB
+            </button>
+          </div>
+        </div>
+        <div class="table-wrap compact-bottom">
+          <table>
+            <thead>
+              <tr>
+                <th>File Repository</th>
+                <th>Baris</th>
+                <th>Ukuran</th>
+                <th>SHA-256</th>
+              </tr>
+            </thead>
+            <tbody id="bundleTable"></tbody>
+          </table>
+        </div>
+        <pre class="code-box" id="patchPreview">Memuat script Termux...</pre>
+      </section>
+    </main>
+
+    <script>
+      let cachedPatch = "";
+      let cachedOverlay = "";
+
+      async function loadConsole() {
+        const gatesStatus = document.getElementById("gatesStatus");
+        gatesStatus.textContent = "Menjalankan...";
+        const [statusRes, patchRes, overlayRes] = await Promise.all([
+          fetch("/api/status"),
+          fetch("/api/bundle.sh"),
+          fetch("/api/termux-overlay.sh"),
+        ]);
+        const data = await statusRes.json();
+        cachedPatch = await patchRes.text();
+        cachedOverlay = await overlayRes.text();
+
+        gatesStatus.textContent = data.all_gates_passed ? "PASS (5 / 5)" : "FAIL";
+        gatesStatus.className =
+          "metric-value " + (data.all_gates_passed ? "text-emerald" : "text-red");
+        document.getElementById("remoteHead").textContent =
+          `mystivara-creator/Umbrella-Project@main (${data.remote_audit.remote_head_sha.slice(0, 7)}) | workflow #${data.remote_audit.workflow_id}`;
+
+        const causesEl = document.getElementById("rootCauses");
+        causesEl.innerHTML = "";
+        for (const item of data.remote_audit.root_causes) {
+          const li = document.createElement("li");
+          li.textContent = item;
+          causesEl.appendChild(li);
+        }
+
+        const gateList = document.getElementById("gateList");
+        gateList.innerHTML = "";
+        for (const g of data.gates) {
+          const row = document.createElement("div");
+          row.className = "gate-item";
+          row.innerHTML = `
+            <div class="gate-top">
+              <strong>${g.name}</strong>
+              <span class="status-tag ${g.passed ? "tag-pass" : "tag-fail"}">${g.passed ? "PASS" : "FAIL"}</span>
+            </div>
+            <div class="mono muted small">${g.command}</div>
+            <pre class="gate-out">${g.output}</pre>
+          `;
+          gateList.appendChild(row);
+        }
+
+        const compBody = document.getElementById("componentsTable");
+        compBody.innerHTML = "";
+        for (const [name, comp] of Object.entries(data.source_manifest.components)) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td class="mono">${name}</td>
+            <td class="mono muted">${comp.path}</td>
+            <td class="mono" title="${comp.commit}">${comp.commit.slice(0, 12)}</td>
+          `;
+          compBody.appendChild(tr);
+        }
+
+        const targetsBody = document.getElementById("targetsTable");
+        targetsBody.innerHTML = "";
+        for (const t of data.verified_bazel_targets) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td class="mono text-sky">${t.label}</td>
+            <td class="mono muted">${t.rule}</td>
+            <td>${t.role}</td>
+          `;
+          targetsBody.appendChild(tr);
+        }
+
+        const bundleBody = document.getElementById("bundleTable");
+        bundleBody.innerHTML = "";
+        for (const b of data.bundle_files) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td class="mono">${b.path}</td>
+            <td class="mono">${b.lines}</td>
+            <td class="mono">${b.bytes} B</td>
+            <td class="mono muted">${b.sha256.slice(0, 16)}…</td>
+          `;
+          bundleBody.appendChild(tr);
+        }
+
+        document.getElementById("patchPreview").textContent = cachedPatch;
+      }
+
+      document.getElementById("refreshBtn").addEventListener("click", loadConsole);
+      document.getElementById("copyPatchBtn").addEventListener("click", async (e) => {
+        await navigator.clipboard.writeText(cachedPatch);
+        const orig = e.target.textContent;
+        e.target.textContent = "Tersalin!";
+        setTimeout(() => (e.target.textContent = orig), 1600);
+      });
+      document.getElementById("copyOverlayBtn").addEventListener("click", async (e) => {
+        await navigator.clipboard.writeText(cachedOverlay);
+        const orig = e.target.textContent;
+        e.target.textContent = "Tersalin!";
+        setTimeout(() => (e.target.textContent = orig), 1600);
+      });
+
+      loadConsole();
+    </script>
+  </body>
+</html>

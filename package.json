@@ -1,0 +1,9 @@
+{
+  "name": "umbrella-project",
+  "private": true,
+  "version": "0.4.1",
+  "scripts": {
+    "dev": "python3 app.py",
+    "start": "python3 app.py"
+  }
+}

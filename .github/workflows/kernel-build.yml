@@ -2,49 +2,254 @@ name: Umbrella Kernel Build
 
 on:
   workflow_dispatch:
+    inputs:
+      build_mode:
+        description: "Pipeline execution depth"
+        required: true
+        default: "full_build"
+        type: choice
+        options:
+          - full_build
+          - query_and_config_only
+      variant:
+        description: "Qualcomm/Xiaomi Kleaf target variant"
+        required: true
+        default: "perf"
+        type: choice
+        options:
+          - perf
+          - consolidate
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/kernel-build.yml'
+      - 'config/sources/kernel-source.json'
+      - 'tools/source_audit.py'
+      - 'tools/setup_kleaf_workspace.py'
+      - 'tools/verify_build_artifacts.py'
+      - 'tests/test_build_pipeline.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: umbrella-kernel-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
+    name: Build kunzite ARM64 (${{ inputs.variant || 'perf' }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 300
+
+    env:
+      KLEAF_WS: ${{ runner.temp }}/android-kernel
+      BAZEL_OUT_ROOT: ${{ runner.temp }}/bazel-out
+      BAZEL_DISK_CACHE: ${{ runner.temp }}/bazel-disk-cache
+      TARGET_VARIANT: ${{ inputs.variant || 'perf' }}
+      BUILD_MODE: ${{ inputs.build_mode || 'full_build' }}
 
     steps:
-      - name: Checkout Umbrella
+      - name: Checkout Umbrella repository
         uses: actions/checkout@v4
 
-      - name: Install repo
+      - name: Audit repository & source provenance gates
         run: |
-          mkdir -p "$HOME/bin"
-          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo \
-            -o "$HOME/bin/repo"
-          chmod +x "$HOME/bin/repo"
-          echo "$HOME/bin" >> "$GITHUB_PATH"
+          python3 tools/validate_foundation.py
+          python3 tools/validate_device_baseline.py
+          python3 tools/source_audit.py
+          python3 tools/validate_regions.py
 
-      - name: Sync Android kernel workspace
+      - name: Reclaim runner disk capacity & install host prerequisites
         run: |
-          mkdir -p "$RUNNER_TEMP/android-kernel"
-          cd "$RUNNER_TEMP/android-kernel"
-          repo init \
-            -u https://android.googlesource.com/kernel/manifest \
-            -b common-android15-6.6
-          repo sync -c -j4 --no-clone-bundle
+          echo "=== Disk usage BEFORE cleanup ==="
+          df -h / "$RUNNER_TEMP"
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            bc bison cpio findutils flex libelf-dev libssl-dev lz4 pahole perl rsync zstd
+          echo "=== Disk usage AFTER cleanup ==="
+          df -h / "$RUNNER_TEMP"
 
-      - name: Checkout Xiaomi kernel source
-        run: |
-          cd "$RUNNER_TEMP/android-kernel"
-          git clone --depth=1 \
-            --branch kunzite-v-oss \
-            https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git \
-            msm-kernel
+      - name: Restore Bazel action cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.BAZEL_DISK_CACHE }}
+          key: umbrella-kleaf-${{ runner.os }}-kunzite-${{ env.TARGET_VARIANT }}-${{ hashFiles('config/sources/kernel-source.json') }}
+          restore-keys: |
+            umbrella-kleaf-${{ runner.os }}-kunzite-${{ env.TARGET_VARIANT }}-
+            umbrella-kleaf-${{ runner.os }}-kunzite-
 
-      - name: Configure Qualcomm extensions
+      - name: Assemble SHA-pinned Kleaf + Xiaomi kunzite workspace
         run: |
-          cd "$RUNNER_TEMP/android-kernel"
-          ln -s ../msm-kernel/msm_kernel_extensions.bzl \
-            build/msm_kernel_extensions.bzl
+          mkdir -p "$KLEAF_WS" "$BAZEL_OUT_ROOT" "$BAZEL_DISK_CACHE"
+          python3 tools/setup_kleaf_workspace.py \
+            --workspace "$KLEAF_WS" \
+            --jobs 4 \
+            --min-free-gb 24
+          cat "$KLEAF_WS/workspace-provenance.json"
 
-      - name: Discover kernel targets
+      - name: Verify Bazel target graph for kunzite
         run: |
-          cd "$RUNNER_TEMP/android-kernel"
-          tools/bazel query '//msm-kernel:*' \
-            --output=label | grep kunzite
+          cd "$KLEAF_WS"
+          TARGET_BASE="//msm-kernel:kunzite_${TARGET_VARIANT}"
+          echo "=== Querying //msm-kernel:* kunzite targets ==="
+          TARGETS_OUT="$(tools/bazel --output_user_root="$BAZEL_OUT_ROOT" query '//msm-kernel:*' --output=label)"
+          echo "$TARGETS_OUT" | grep -E '^//msm-kernel:kunzite' | tee "$RUNNER_TEMP/kunzite-targets.txt"
+
+          for required_label in \
+            "${TARGET_BASE}" \
+            "${TARGET_BASE}_build_config" \
+            "${TARGET_BASE}_images" \
+            "${TARGET_BASE}_dist"
+          do
+            if ! grep -Fxq "$required_label" "$RUNNER_TEMP/kunzite-targets.txt"; then
+              echo "FATAL: Expected Bazel target missing: $required_label" >&2
+              exit 1
+            fi
+            echo "Verified target: $required_label"
+          done
+
+          echo "=== Verifying devicetree & base GKI targets ==="
+          tools/bazel --output_user_root="$BAZEL_OUT_ROOT" query \
+            '//msm-kernel/arch/arm64/boot/dts/vendor:msm_dt + //common:kernel_aarch64' \
+            --output=label
+
+      - name: Validate Bazel analysis & merged Kconfig generation
+        run: |
+          cd "$KLEAF_WS"
+          tools/bazel --output_user_root="$BAZEL_OUT_ROOT" build \
+            --disk_cache="$BAZEL_DISK_CACHE" \
+            --define=FACTORY_BUILD=None \
+            --user_kmi_symbol_lists=//msm-kernel:android/abi_gki_aarch64_qcom \
+            --ignore_missing_projects \
+            --incompatible_sandbox_hermetic_tmp=false \
+            --nozstd_dwarf_compression \
+            --allow_undeclared_modules \
+            --//msm-kernel:skip_abl=true \
+            --//msm-kernel:skip_abi=true \
+            "//msm-kernel:kunzite_${TARGET_VARIANT}_build_config" \
+            "//msm-kernel/arch/arm64/boot/dts/vendor:msm_dt"
+
+      - name: Compile ARM64 GKI + Qualcomm/Xiaomi kunzite kernel & modules
+        if: ${{ (inputs.build_mode || 'full_build') == 'full_build' }}
+        run: |
+          cd "$KLEAF_WS"
+          DIST_DIR="$KLEAF_WS/out/msm-kernel-kunzite-${TARGET_VARIANT}/dist"
+          mkdir -p "$DIST_DIR"
+
+          COMMON_FLAGS=(
+            --disk_cache="$BAZEL_DISK_CACHE"
+            --jobs=4
+            --verbose_failures
+            --define=FACTORY_BUILD=None
+            --user_kmi_symbol_lists=//msm-kernel:android/abi_gki_aarch64_qcom
+            --ignore_missing_projects
+            --incompatible_sandbox_hermetic_tmp=false
+            --nozstd_dwarf_compression
+            --allow_undeclared_modules
+            --//msm-kernel:skip_abl=true
+            --//msm-kernel:skip_abi=true
+          )
+
+          echo "=== Stage 1/3: Building core GKI //common:kernel_aarch64 + //common:kernel_aarch64_images ==="
+          tools/bazel --output_user_root="$BAZEL_OUT_ROOT" build \
+            "${COMMON_FLAGS[@]}" \
+            //common:kernel_aarch64 \
+            //common:kernel_aarch64_images
+
+          echo "=== Stage 2/3: Building vendor //msm-kernel:kunzite_${TARGET_VARIANT} + _images ==="
+          tools/bazel --output_user_root="$BAZEL_OUT_ROOT" build \
+            "${COMMON_FLAGS[@]}" \
+            "//msm-kernel:kunzite_${TARGET_VARIANT}" \
+            "//msm-kernel:kunzite_${TARGET_VARIANT}_images"
+
+          echo "=== Stage 3/3: Collecting artifacts into $DIST_DIR ==="
+          BAZEL_BIN="$(tools/bazel --output_user_root="$BAZEL_OUT_ROOT" info "${COMMON_FLAGS[@]}" bazel-bin)"
+          cp -Lf "$BAZEL_BIN/common/kernel_aarch64/Image" "$DIST_DIR/"
+          if [ -f "$BAZEL_BIN/common/kernel_aarch64/Image.lz4" ]; then
+            cp -Lf "$BAZEL_BIN/common/kernel_aarch64/Image.lz4" "$DIST_DIR/"
+          fi
+          if [ -f "$BAZEL_BIN/common/kernel_aarch64/System.map" ]; then
+            cp -Lf "$BAZEL_BIN/common/kernel_aarch64/System.map" "$DIST_DIR/"
+          fi
+          cp -Lf "$BAZEL_BIN/common/kernel_aarch64/.config" "$DIST_DIR/gki.config"
+          cp -Lf "$BAZEL_BIN/common/kernel_aarch64/Module.symvers" "$DIST_DIR/gki.Module.symvers"
+
+          for img in boot.img init_boot.img system_dlkm.ext4.img system_dlkm.erofs.img; do
+            found="$(find "$BAZEL_BIN/common" -maxdepth 3 -name "$img" | head -n 1 || true)"
+            if [ -n "$found" ]; then
+              cp -Lf "$found" "$DIST_DIR/"
+            fi
+          done
+
+          VENDOR_OUT="$BAZEL_BIN/msm-kernel/kunzite_${TARGET_VARIANT}"
+          cp -Lf "$VENDOR_OUT/.config" "$DIST_DIR/.config"
+          cp -Lf "$VENDOR_OUT/Module.symvers" "$DIST_DIR/Module.symvers"
+          find "$VENDOR_OUT" -type f \( -name "*.ko" -o -name "*.dtb" -o -name "*.dtbo" \) \
+            -exec cp -Lf {} "$DIST_DIR/" \;
+
+          VENDOR_IMG_OUT="$BAZEL_BIN/msm-kernel/kunzite_${TARGET_VARIANT}_images"
+          if [ -d "$VENDOR_IMG_OUT" ]; then
+            find "$VENDOR_IMG_OUT" -type f -name "*.img" -exec cp -Lf {} "$DIST_DIR/" \;
+          fi
+
+          cp -Lf "$KLEAF_WS/workspace-provenance.json" "$DIST_DIR/workspace-provenance.json"
+          ls -lh "$DIST_DIR" | head -n 60
+
+      - name: Run Phase E compatibility & artifact verification
+        if: ${{ (inputs.build_mode || 'full_build') == 'full_build' }}
+        run: |
+          DIST_DIR="$KLEAF_WS/out/msm-kernel-kunzite-${TARGET_VARIANT}/dist"
+          python3 tools/verify_build_artifacts.py \
+            --dist-dir "$DIST_DIR" \
+            --report-out "$DIST_DIR/umbrella-build-report.json"
+
+      - name: Collect diagnostic logs on failure
+        if: failure()
+        run: |
+          DIAG_DIR="$RUNNER_TEMP/umbrella-diagnostics"
+          mkdir -p "$DIAG_DIR"
+          df -h > "$DIAG_DIR/disk-usage.txt"
+          free -h > "$DIAG_DIR/memory-usage.txt"
+          if [ -f "$KLEAF_WS/workspace-provenance.json" ]; then
+            cp -f "$KLEAF_WS/workspace-provenance.json" "$DIAG_DIR/"
+          fi
+          find "$BAZEL_OUT_ROOT" -name "command.log" -exec cp -f {} "$DIAG_DIR/bazel-command.log" \; 2>/dev/null || true
+          ls -la "$DIAG_DIR"
+
+      - name: Upload kernel build artifacts
+        if: ${{ (inputs.build_mode || 'full_build') == 'full_build' && success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: umbrella-kunzite-${{ inputs.variant || 'perf' }}-${{ github.sha }}
+          path: |
+            ${{ env.KLEAF_WS }}/out/msm-kernel-kunzite-${{ inputs.variant || 'perf' }}/dist/Image
+            ${{ env.KLEAF_WS }}/out/msm-kernel-kunzite-${{ inputs.variant || 'perf' }}/dist/Image.lz4
+            ${{ env.KLEAF_WS }}/out/msm-kernel-kunzite-${{ inputs.variant || 'perf' }}/dist/*.img
+            ${{ env.KLEAF_WS }}/out/msm-kernel-kunzite-${{ inputs.variant || 'perf' }}/dist/*.dtb
+            ${{ env.KLEAF_WS }}/out/msm-kernel-kunzite-${{ inputs.variant || 'perf' }}/dist/*.dtbo
+            ${{ env.KLEAF_WS }}/out/msm-kernel-kunzite-${{ inputs.variant || 'perf' }}/dist/*.ko
+            ${{ env.KLEAF_WS }}/out/msm-kernel-kunzite-${{ inputs.variant || 'perf' }}/dist/.config
+            ${{ env.KLEAF_WS }}/out/msm-kernel-kunzite-${{ inputs.variant || 'perf' }}/dist/gki.config
+            ${{ env.KLEAF_WS }}/out/msm-kernel-kunzite-${{ inputs.variant || 'perf' }}/dist/Module.symvers
+            ${{ env.KLEAF_WS }}/out/msm-kernel-kunzite-${{ inputs.variant || 'perf' }}/dist/gki.Module.symvers
+            ${{ env.KLEAF_WS }}/out/msm-kernel-kunzite-${{ inputs.variant || 'perf' }}/dist/workspace-provenance.json
+            ${{ env.KLEAF_WS }}/out/msm-kernel-kunzite-${{ inputs.variant || 'perf' }}/dist/umbrella-build-report.json
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: umbrella-build-diagnostics-${{ github.sha }}
+          path: ${{ runner.temp }}/umbrella-diagnostics/
+          retention-days: 7
+          if-no-files-found: ignore

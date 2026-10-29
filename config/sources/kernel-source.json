@@ -1,10 +1,79 @@
 {
+  "schema_version": 2,
   "device": "kunzite_global",
+  "codename": "kunzite",
+  "board": "parrot",
   "kernel_release_observed": "6.6.118-android15-8-ge56cf6b09cca-ab15511674-4k",
-  "source_status": "unverified",
-  "repository": null,
-  "commit": null,
-  "defconfig": null,
-  "toolchain": null,
-  "notes": "Do not infer device compatibility from the common kernel version alone."
+  "vendor_module_vermagic_observed": "6.6.118-android15-8-maybe-dirty-4k",
+  "kmi_family": "android15-6.6",
+  "kmi_generation": 8,
+  "page_size_bytes": 4096,
+  "source_status": "verified",
+  "build_strategy": "qualcomm_kleaf_mixed_build",
+  "repository": "https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git",
+  "branch": "kunzite-v-oss",
+  "commit": "2d446f1cf9e3a18c30af43ebeb6e5a443636d647",
+  "defconfig": "gki_defconfig + arch/arm64/configs/vendor/kunzite_perf.config",
+  "toolchain": "clang-r510928 (Android Clang 18, aarch64-linux-android31)",
+  "clang_version": "r510928",
+  "bazel_targets": {
+    "base_kernel": "//common:kernel_aarch64",
+    "kernel_build": "//msm-kernel:kunzite_perf",
+    "kernel_images": "//msm-kernel:kunzite_perf_images",
+    "kernel_dist": "//msm-kernel:kunzite_perf_dist",
+    "dtstree": "//msm-kernel/arch/arm64/boot/dts/vendor:msm_dt"
+  },
+  "bazel_flags": [
+    "--define=FACTORY_BUILD=None",
+    "--user_kmi_symbol_lists=//msm-kernel:android/abi_gki_aarch64_qcom",
+    "--ignore_missing_projects",
+    "--incompatible_sandbox_hermetic_tmp=false",
+    "--nozstd_dwarf_compression",
+    "--allow_undeclared_modules",
+    "--//msm-kernel:skip_abl=true",
+    "--//msm-kernel:skip_abi=true"
+  ],
+  "components": {
+    "msm_kernel": {
+      "path": "msm-kernel",
+      "repository": "https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git",
+      "branch": "kunzite-v-oss",
+      "commit": "2d446f1cf9e3a18c30af43ebeb6e5a443636d647",
+      "linux_version": "6.6.56",
+      "ack_baseline_sha": "38447e018c92f6ae182067a02a6954fa92b33a73"
+    },
+    "kernel_devicetree": {
+      "path": "msm-kernel/arch/arm64/boot/dts/vendor",
+      "repository": "https://github.com/MiCode/kernel_devicetree.git",
+      "branch": "kunzite-v-oss",
+      "commit": "135826dc58add57c7cfdcf01e3c4bb8d9f2cf36f"
+    },
+    "kernel_build": {
+      "path": "build/kernel",
+      "repository": "https://github.com/MiCode/kernel_build.git",
+      "branch": "kunzite-v-oss",
+      "commit": "d0c9ebb3187e9b5159b753f989624978435db516"
+    },
+    "common_kernel": {
+      "path": "common",
+      "repository": "https://android.googlesource.com/kernel/common",
+      "branch": "android15-6.6",
+      "commit": "e56cf6b09cca2151bcee244b3d334fb68685ff57",
+      "linux_version": "6.6.118"
+    },
+    "external_dtc": {
+      "path": "external/dtc",
+      "repository": "https://git.codelinaro.org/clo/la/kernel_platform/external/dtc.git",
+      "branch": "kernel.build.lnx.2.0.r50-rel",
+      "commit": "abee18fa51c1ffdd58d5b481fb82735dfa6b8a2d"
+    }
+  },
+  "aosp_kleaf_manifest_branch": "main-kernel-build-2024",
+  "stock_config_local": {
+    "path": "config/kernel/kunzite-stock.config",
+    "expected_lines": 7755,
+    "expected_sha256": "b4bdfa788a4f501ff39d3ed8a6729d728aa4cea8e9fb651ab816383eb8e805e1",
+    "tracked_in_git": false
+  },
+  "notes": "Qualcomm Kleaf mixed build: //common:kernel_aarch64 provides GKI 6.6.118-android15-8 core Image/boot.img matching stock ge56cf6b09cca; //msm-kernel:kunzite_perf builds Qualcomm/Xiaomi vendor modules and kunzite DTBs/DTBO against frozen android15-8 KMI. Flash safety remains unapproved until post-build symbol/CRC/boot validation."
 }
