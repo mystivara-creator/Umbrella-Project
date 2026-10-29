@@ -28,6 +28,25 @@ Umbrella-Project/
 
 A real Linux kernel source tree (e.g. `arch`, `drivers`, `include`, `kernel`, `mm`) will only be added **after** a compatible kernel source and licensing obligations are verified.
 
+## Architecture
+
+```text
+mystivara-creator/
+├── Umbrella-Project/
+│   ├── arch/
+│   ├── drivers/
+│   ├── include/
+│   ├── kernel/
+│   ├── mm/
+│   ├── Documentation/
+│   └── docs/
+│
+├── Android-Kernel-Builder/
+│   └── .github/workflows/
+│
+└── CoreFlow-Engine/
+```
+
 ## Development milestones
 
 1. Confirm exact device variant, firmware, kernel, partition scheme and recovery path.
