@@ -234,6 +234,42 @@ def main() -> None:
         if len(vmlinux_syms) < 2000:
             errors.append(f"Unexpectedly low vmlinux exported KMI symbol count: {len(vmlinux_syms)}")
 
+    # Compare symbols shared by GKI and vendor without assuming the stock CRCs.
+    # This is a build-time consistency check, NOT a substitute for stock-module ABI validation.
+    gki_symvers_path = dist_dir / "gki.Module.symvers"
+    if gki_symvers_path.is_file() and symvers_path.is_file():
+        def read_symvers(path: Path) -> dict[str, str]:
+            result: dict[str, str] = {}
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                fields = line.split()
+                if len(fields) >= 3:
+                    result[fields[1]] = fields[0]
+            return result
+
+        gki_symbols = read_symvers(gki_symvers_path)
+        vendor_symbols = read_symvers(symvers_path)
+        common_names = gki_symbols.keys() & vendor_symbols.keys()
+        crc_mismatches = sorted(
+            name for name in common_names
+            if gki_symbols[name].lower() != vendor_symbols[name].lower()
+        )
+        symvers_report["gki_symbol_count"] = len(gki_symbols)
+        symvers_report["shared_symbol_count"] = len(common_names)
+        symvers_report["shared_crc_mismatch_count"] = len(crc_mismatches)
+        symvers_report["shared_crc_mismatch_samples"] = crc_mismatches[:30]
+        if crc_mismatches:
+            compatibility_blockers.append(
+                f"GKI/vendor shared symbol CRC mismatches: {len(crc_mismatches)}"
+            )
+        if not common_names:
+            compatibility_blockers.append(
+                "GKI/vendor Module.symvers have no common symbols; CRC relationship cannot be assessed"
+            )
+    else:
+        compatibility_blockers.append(
+            "GKI and vendor Module.symvers comparison unavailable"
+        )
+
     ko_files = sorted(dist_dir.glob("*.ko"))
     vermagics: set[str] = set()
     sample_modules: dict[str, dict[str, str]] = {}
