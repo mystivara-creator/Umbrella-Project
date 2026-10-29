@@ -138,6 +138,7 @@ jobs:
             "//msm-kernel/arch/arm64/boot/dts/vendor:msm_dt"
 
       - name: Compile ARM64 GKI + Qualcomm/Xiaomi kunzite kernel & modules
+        id: build_compile
         if: ${{ (inputs.build_mode || 'full_build') == 'full_build' }}
         run: |
           cd "$KLEAF_WS"
@@ -215,7 +216,10 @@ jobs:
           fi
 
           cp -Lf "$KLEAF_WS/workspace-provenance.json" "$DIST_DIR/workspace-provenance.json"
-          ls -lh "$DIST_DIR" | head -n 60
+          echo "=== Bazel output inventory (diagnostic, bounded) ==="
+          find "$BAZEL_BIN/common" -maxdepth 4 -type f \\( -name '.config' -o -name '*config*' -o -name 'Module.symvers' -o -name '*.img' \\) -print | head -n 100 || true
+          echo "=== Dist artifact inventory ==="
+          find "$DIST_DIR" -maxdepth 1 -type f -printf '%f %s bytes\\n' | sort | head -n 100
 
       - name: Run Phase E compatibility & artifact verification
         if: ${{ (inputs.build_mode || 'full_build') == 'full_build' }}
@@ -239,7 +243,7 @@ jobs:
           ls -la "$DIAG_DIR"
 
       - name: Upload kernel build artifacts
-        if: ${{ (inputs.build_mode || 'full_build') == 'full_build' && success() }}
+        if: ${{ always() && (inputs.build_mode || 'full_build') == 'full_build' && steps.build_compile.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: umbrella-kunzite-${{ inputs.variant || 'perf' }}-${{ github.sha }}
