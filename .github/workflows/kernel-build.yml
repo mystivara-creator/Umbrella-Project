@@ -44,9 +44,9 @@ jobs:
     timeout-minutes: 300
 
     env:
-      KLEAF_WS: ${{ runner.temp }}/android-kernel
-      BAZEL_OUT_ROOT: ${{ runner.temp }}/bazel-out
-      BAZEL_DISK_CACHE: ${{ runner.temp }}/bazel-disk-cache
+      KLEAF_WS: ${{ github.workspace }}/.umbrella-workspace/android-kernel
+      BAZEL_OUT_ROOT: ${{ github.workspace }}/.umbrella-workspace/bazel-out
+      BAZEL_DISK_CACHE: ${{ github.workspace }}/.umbrella-workspace/bazel-disk-cache
       TARGET_VARIANT: ${{ inputs.variant || 'perf' }}
       BUILD_MODE: ${{ inputs.build_mode || 'full_build' }}
 
