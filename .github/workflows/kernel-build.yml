@@ -179,8 +179,17 @@ jobs:
           if [ -f "$BAZEL_BIN/common/kernel_aarch64/System.map" ]; then
             cp -Lf "$BAZEL_BIN/common/kernel_aarch64/System.map" "$DIST_DIR/"
           fi
-          cp -Lf "$BAZEL_BIN/common/kernel_aarch64/.config" "$DIST_DIR/gki.config"
-          cp -Lf "$BAZEL_BIN/common/kernel_aarch64/Module.symvers" "$DIST_DIR/gki.Module.symvers"
+          # Kleaf kernel_build does not guarantee hidden .config in bazel-bin.
+          # Preserve the build outputs and let artifact verification report gaps.
+          for spec in ".config:gki.config" "Module.symvers:gki.Module.symvers"; do
+            src="${spec%%:*}"
+            dst="${spec#*:}"
+            if [ -f "$BAZEL_BIN/common/kernel_aarch64/$src" ]; then
+              cp -Lf "$BAZEL_BIN/common/kernel_aarch64/$src" "$DIST_DIR/$dst"
+            else
+              echo "::warning::GKI $src is not exposed in bazel-bin; not copying $dst"
+            fi
+          done
 
           for img in boot.img init_boot.img system_dlkm.ext4.img system_dlkm.erofs.img; do
             found="$(find "$BAZEL_BIN/common" -maxdepth 3 -name "$img" | head -n 1 || true)"
@@ -190,8 +199,13 @@ jobs:
           done
 
           VENDOR_OUT="$BAZEL_BIN/msm-kernel/kunzite_${TARGET_VARIANT}"
-          cp -Lf "$VENDOR_OUT/.config" "$DIST_DIR/.config"
-          cp -Lf "$VENDOR_OUT/Module.symvers" "$DIST_DIR/Module.symvers"
+          for filename in .config Module.symvers; do
+            if [ -f "$VENDOR_OUT/$filename" ]; then
+              cp -Lf "$VENDOR_OUT/$filename" "$DIST_DIR/$filename"
+            else
+              echo "::warning::Vendor $filename is not exposed in bazel-bin"
+            fi
+          done
           find "$VENDOR_OUT" -type f \( -name "*.ko" -o -name "*.dtb" -o -name "*.dtbo" \) \
             -exec cp -Lf {} "$DIST_DIR/" \;
 
