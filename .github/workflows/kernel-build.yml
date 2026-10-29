@@ -1,0 +1,50 @@
+name: Umbrella Kernel Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout Umbrella
+        uses: actions/checkout@v4
+
+      - name: Install repo
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo \
+            -o "$HOME/bin/repo"
+          chmod +x "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Sync Android kernel workspace
+        run: |
+          mkdir -p "$RUNNER_TEMP/android-kernel"
+          cd "$RUNNER_TEMP/android-kernel"
+          repo init \
+            -u https://android.googlesource.com/kernel/manifest \
+            -b common-android15-6.6
+          repo sync -c -j4 --no-clone-bundle
+
+      - name: Checkout Xiaomi kernel source
+        run: |
+          cd "$RUNNER_TEMP/android-kernel"
+          git clone --depth=1 \
+            --branch kunzite-v-oss \
+            https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git \
+            msm-kernel
+
+      - name: Configure Qualcomm extensions
+        run: |
+          cd "$RUNNER_TEMP/android-kernel"
+          ln -s ../msm-kernel/msm_kernel_extensions.bzl \
+            build/msm_kernel_extensions.bzl
+
+      - name: Discover kernel targets
+        run: |
+          cd "$RUNNER_TEMP/android-kernel"
+          tools/bazel query '//msm-kernel:*' \
+            --output=label | grep kunzite
