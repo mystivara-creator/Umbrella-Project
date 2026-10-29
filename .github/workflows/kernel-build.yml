@@ -217,7 +217,9 @@ jobs:
 
           cp -Lf "$KLEAF_WS/workspace-provenance.json" "$DIST_DIR/workspace-provenance.json"
           echo "=== Bazel output inventory (diagnostic, bounded) ==="
-          find "$BAZEL_BIN/common" -maxdepth 4 -type f \\( -name '.config' -o -name '*config*' -o -name 'Module.symvers' -o -name '*.img' \\) -print | head -n 100 || true
+          find "$BAZEL_BIN/common" -maxdepth 4 -type f -name 'Module.symvers' -print | head -n 40 || true
+          find "$BAZEL_BIN/common" -maxdepth 4 -type f -name '*config*' -print | head -n 40 || true
+          find "$BAZEL_BIN/common" -maxdepth 4 -type f -name '*.img' -print | head -n 40 || true
           echo "=== Dist artifact inventory ==="
           find "$DIST_DIR" -maxdepth 1 -type f -printf '%f %s bytes\\n' | sort | head -n 100
 
