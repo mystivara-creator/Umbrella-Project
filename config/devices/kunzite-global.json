@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "device": "Redmi Note 15 5G",
+  "model": "25098RA98G",
+  "codename": "kunzite",
+  "board": "parrot",
+  "region": "Global",
+  "mod_device": "kunzite_global",
+  "android_release": "16",
+  "build_id": "BP2A.250605.031.A3",
+  "hyperos": "OS3.0.304.0.WPQMIXM",
+  "kernel_release": "6.6.118-android15-8-ge56cf6b09cca-ab15511674-4k",
+  "kernel_build_date": "Thu May 28 07:48:46 UTC 2026",
+  "architecture": "aarch64",
+  "kmi_family": "android15-6.6",
+  "kmi_generation": 8,
+  "page_size_bytes": 4096,
+  "source_status": "unverified",
+  "build_status": "not_started",
+  "flash_status": "not_approved"
+}
