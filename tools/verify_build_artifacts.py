@@ -139,6 +139,7 @@ def main() -> None:
     manifest = json.loads(SOURCE_MANIFEST.read_text(encoding="utf-8"))
     errors: list[str] = []
     warnings: list[str] = []
+    compatibility_blockers: list[str] = []
 
     image_path = dist_dir / "Image"
     symvers_path = dist_dir / "Module.symvers"
@@ -157,6 +158,9 @@ def main() -> None:
         errors.append("Missing arm64 kernel Image in dist directory")
     if not symvers_path.is_file():
         errors.append("Missing Module.symvers in dist directory")
+
+    if not (dist_dir / "gki.config").is_file():
+        compatibility_blockers.append("GKI .config unavailable: core KMI/security configuration not independently audited")
 
     config_report: dict[str, object] = {}
     if config_path.is_file():
@@ -260,10 +264,15 @@ def main() -> None:
     }
     if not ko_files:
         errors.append("Zero .ko kernel modules found in dist directory")
+    if not vermagics:
+        compatibility_blockers.append("No module vermagic metadata extracted")
     for vm in vermagics:
         if "android15-8-" not in vm or "4k" not in vm:
             errors.append(f"Incompatible module vermagic KMI/page-size token: {vm}")
         if vm.split(" ", 1)[0] != manifest["vendor_module_vermagic_observed"]:
+            compatibility_blockers.append(
+                f"Vendor vermagic mismatch: built={vm.split(chr(32), 1)[0]} stock={manifest[\u0027vendor_module_vermagic_observed\u0027]}"
+            )
             warnings.append(
                 f"Built vendor module vermagic differs from observed stock: {vm}. "
                 "Module load compatibility is NOT verified; do not flash."
@@ -288,6 +297,13 @@ def main() -> None:
         overlay_bytes = kunzite_dtbo.read_bytes()
         dt_report["kunzite_overlay_contains_parrot_qrd"] = b"qcom,parrot-qrd" in overlay_bytes
         dt_report["kunzite_overlay_contains_simtray"] = b"xiaomi,simtray-status" in overlay_bytes
+
+    if not (dist_dir / "boot.img").is_file():
+        compatibility_blockers.append("Boot image not collected: no validated installable kernel image")
+    if not (dist_dir / "vendor_boot.img").is_file():
+        compatibility_blockers.append("Vendor boot image not collected: partition integration not validated")
+    compatibility_blockers.append("Stock vendor module symbol CRC comparison not performed")
+    compatibility_blockers.append("AVB/vbmeta, partition layout, and recovery path not verified on hardware")
 
     images_report: dict[str, object] = {}
     for img_name in ("boot.img", "init_boot.img", "vendor_boot.img", "dtbo.img", "vendor_dlkm.img", "system_dlkm.ext4.img", "system_dlkm.erofs.img"):
@@ -315,6 +331,8 @@ def main() -> None:
         "warnings": warnings,
         "errors": errors,
         "build_verification_passed": len(errors) == 0,
+        "compatibility_blockers": compatibility_blockers,
+        "compatibility_verified": len(compatibility_blockers) == 0 and len(errors) == 0,
         "flash_approved": False,
         "flash_gate_reason": (
             "Build artifacts verified; DO NOT FLASH until stock vendor module symbol CRCs, "
@@ -334,6 +352,8 @@ def main() -> None:
     print(f"Report written : {out_path}")
     for w in warnings:
         print(f"WARN: {w}")
+    for blocker in compatibility_blockers:
+        print(f"FLASH BLOCKED: {blocker}")
     if errors:
         for e in errors:
             print(f"ERROR: {e}", file=sys.stderr)
