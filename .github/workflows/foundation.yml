@@ -1,0 +1,24 @@
+name: Foundation validation
+
+on:
+  push:
+    paths:
+      - 'README.md'
+      - 'docs/**'
+      - 'interfaces/**'
+      - 'config/devices/**'
+      - 'tools/**'
+      - '.github/workflows/foundation.yml'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate foundation metadata
+        run: python3 tools/validate_foundation.py

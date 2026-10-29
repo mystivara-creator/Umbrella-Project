@@ -1,0 +1,25 @@
+# Local / editor
+*.swp
+*.swo
+.DS_Store
+.idea/
+.vscode/
+__pycache__/
+*.py[cod]
+
+# Kernel builds (once sources are introduced)
+out/
+build/
+*.o
+*.ko
+*.cmd
+*.mod
+*.mod.c
+*.dtb
+*.dtbo
+*.img
+Module.symvers
+modules.order
+.tmp_versions/
+
+# Keep release artifacts out of the source history unless explicitly planned.

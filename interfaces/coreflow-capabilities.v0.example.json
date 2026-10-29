@@ -1,0 +1,15 @@
+{
+  "schema_version": "0-design-only",
+  "project": "Umbrella Project",
+  "status": "example-not-implemented",
+  "kernel_dependency_required": false,
+  "features": [
+    {
+      "id": "example.scheduler.telemetry",
+      "available": false,
+      "mode": "read-only",
+      "interface": "not-selected",
+      "constraints": "device-specific verification required"
+    }
+  ]
+}

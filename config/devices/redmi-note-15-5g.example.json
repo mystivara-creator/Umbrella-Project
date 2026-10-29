@@ -1,0 +1,16 @@
+{
+  "target": "Redmi Note 15 5G",
+  "status": "unverified",
+  "device_model": null,
+  "device_codename": null,
+  "soc": null,
+  "android_version": null,
+  "firmware_build": null,
+  "kernel_release": null,
+  "upstream_source_url": null,
+  "upstream_commit": null,
+  "defconfig": null,
+  "toolchain_revision": null,
+  "boot_layout_verified": false,
+  "hardware_boot_tested": false
+}
