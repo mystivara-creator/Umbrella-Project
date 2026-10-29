@@ -23,3 +23,6 @@ modules.order
 .tmp_versions/
 
 # Keep release artifacts out of the source history unless explicitly planned.
+
+# Local stock kernel configuration
+/config/kernel/kunzite-stock.config
