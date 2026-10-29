@@ -1,0 +1,21 @@
+name: Umbrella source metadata audit
+on:
+  push:
+    paths:
+      - 'config/sources/**'
+      - 'tools/source_audit.py'
+      - '.github/workflows/source-audit.yml'
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source metadata
+        run: python3 tools/source_audit.py
+      - name: Explain source gate
+        run: |
+          echo 'No kernel build is attempted until matching source, config, toolchain and vendor ABI are verified.'

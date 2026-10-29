@@ -1,0 +1,10 @@
+{
+  "device": "kunzite_global",
+  "kernel_release_observed": "6.6.118-android15-8-ge56cf6b09cca-ab15511674-4k",
+  "source_status": "unverified",
+  "repository": null,
+  "commit": null,
+  "defconfig": null,
+  "toolchain": null,
+  "notes": "Do not infer device compatibility from the common kernel version alone."
+}
