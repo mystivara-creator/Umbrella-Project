@@ -346,17 +346,26 @@ def main() -> None:
         errors.append("Zero .ko kernel modules found in dist directory")
     if not vermagics:
         compatibility_blockers.append("No module vermagic metadata extracted")
+    # Stock kunzite contains multiple module release families (6.6.118 and
+    # 6.6.56). A single global vermagic is not a valid per-module ABI oracle.
+    stock_release = manifest["kernel_release_observed"].split("-android", 1)[0]
     for vm in vermagics:
-        if "android15-8-" not in vm or "4k" not in vm:
-            errors.append(f"Incompatible module vermagic KMI/page-size token: {vm}")
-        if vm.split(" ", 1)[0] != manifest["vendor_module_vermagic_observed"]:
+        token = vm.split(" ", 1)[0]
+        if "4k" not in token:
+            errors.append(f"Missing 4k page-size marker in module vermagic: {vm}")
+        if "android15-8" not in token:
+            warnings.append(f"Nonstandard KMI token in module vermagic: {vm}")
             compatibility_blockers.append(
-                f"Vendor vermagic mismatch: built={vm.split(' ', 1)[0]} stock={manifest['vendor_module_vermagic_observed']}"
+                f"Module requires individual ABI validation (nonstandard KMI token): {token}"
             )
+        if not token.startswith(stock_release + "-"):
             warnings.append(
-                f"Built vendor module vermagic differs from observed stock: {vm}. "
-                "Module load compatibility is NOT verified; do not flash."
+                f"Module release differs from running stock kernel: {vm}; "
+                "this is not independently proof of incompatibility."
             )
+    compatibility_blockers.append(
+        "Per-module stock vermagic/ABI mapping not yet compared against built modules"
+    )
 
     dtb_files = sorted(dist_dir.glob("*.dtb"))
     dtbo_files = sorted(dist_dir.glob("*.dtbo"))
