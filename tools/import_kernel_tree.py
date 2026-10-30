@@ -21,7 +21,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from source_audit import REQUIRED_KERNEL_DIRS, audit_source_manifest, parse_makefile_version
 
@@ -38,7 +38,6 @@ UMBRELLA_GITIGNORE_FOOTER = """
 /dist/
 /.umbrella-workspace/
 /bazel-*/
-/config/kernel/kunzite-stock.config
 /umbrella-kunzite-test-baseline-*.tar.gz
 !/.gitignore
 !/.github/
@@ -57,6 +56,8 @@ UMBRELLA_GITIGNORE_FOOTER = """
 !/tests/**
 !/tools/*.py
 !/tools/*.sh
+# Keep private configuration excluded after all governance negations.
+/config/kernel/kunzite-stock.config
 """
 
 
@@ -124,9 +125,13 @@ def extract_git_commit_to_dir(
     dest_resolved = dest_dir.resolve()
     with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:") as tf:
         for member in tf.getmembers():
-            rel = member.name.lstrip("./")
-            if not rel:
+            rel = member.name
+            while rel.startswith("./"):
+                rel = rel[2:]
+            if rel in ("", "."):
                 continue
+            if rel.startswith("/") or ".." in PurePosixPath(rel).parts:
+                raise RuntimeError(f"Unsafe tar path traversal blocked: {member.name}")
             target = (dest_resolved / rel).resolve()
             if not target.is_relative_to(dest_resolved):
                 raise RuntimeError(f"Unsafe tar path traversal blocked: {member.name}")
@@ -168,6 +173,9 @@ def extract_git_commit_to_dir(
 def merge_gitignore(upstream_gitignore: str | None, existing_gitignore: str) -> str:
     base = (upstream_gitignore or existing_gitignore).rstrip()
     if "=== Umbrella Project Governance, CI & Workspace Rules ===" in base:
+        # Repair older generated footers without dropping user-added rules.
+        if base.splitlines()[-1] != "/config/kernel/kunzite-stock.config":
+            base += "\n/config/kernel/kunzite-stock.config"
         return base + "\n"
     return base + "\n" + UMBRELLA_GITIGNORE_FOOTER.lstrip("\n")
 
@@ -355,3 +363,4 @@ if __name__ == "__main__":
     except Exception as exc:
         print(f"Kernel tree import FAIL: {exc}", file=sys.stderr)
         sys.exit(1)
+

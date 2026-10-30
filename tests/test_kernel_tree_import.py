@@ -55,6 +55,8 @@ def create_synthetic_upstream_kernel_repo(path: Path, sublevel: int = 118, inclu
         (path / "kunzite.bzl").write_text("def define_kunzite():\n    pass\n", encoding="utf-8")
 
     files = {
+        ".clang-format": "BasedOnStyle: LLVM\n",
+        ".rustfmt.toml": "edition = \"2021\"\n",
         "arch/arm64/Makefile": "# arm64 Makefile\n",
         "drivers/Makefile": "# drivers Makefile\n",
         "include/linux/kernel.h": "/* kernel.h */\n",
@@ -127,11 +129,18 @@ class KernelTreeImportTests(unittest.TestCase):
             self.assertTrue((umbrella_repo / "mm/vmscan.c").is_file())
             self.assertTrue((umbrella_repo / "tools/build/Build").is_file())
             self.assertTrue((umbrella_repo / "tools/source_audit.py").is_file())
+            for hidden in (".clang-format", ".rustfmt.toml"):
+                self.assertEqual((umbrella_repo / hidden).read_bytes(),
+                                 (upstream_common / hidden).read_bytes())
+                self.assertFalse((umbrella_repo / hidden[1:]).exists())
+            self.assertFalse((umbrella_repo / "gitignore").exists())
+            self.assertIn("# SPDX-License-Identifier: GPL-2.0-only",
+                          (umbrella_repo / ".gitignore").read_text())
 
             # Verify neither Linux tools/build/ nor .github/workflows/ is ignored
             for critical in ("tools/build/Build", ".github/workflows/kernel-build.yml", "tools/source_audit.py"):
                 chk = subprocess.run(
-                    ["git", "check-ignore", "-q", critical],
+                    ["git", "check-ignore", "--no-index", "-q", critical],
                     cwd=str(umbrella_repo),
                     check=False,
                 )
@@ -148,6 +157,37 @@ class KernelTreeImportTests(unittest.TestCase):
             self.assertTrue((ws_common / "arch/arm64/Makefile").is_file())
             self.assertTrue((ws_common / ".git").exists())
             self.assertFalse((ws_common / ".umbrella-workspace").exists())
+
+    def test_private_stock_config_stays_ignored_after_governance_negations(self) -> None:
+        legacy = ("# === Umbrella Project Governance, CI & Workspace Rules ===\n"
+                  "/config/kernel/kunzite-stock.config\n!/config/\n!/config/**\n")
+        cases = {
+            "repository": (ROOT / ".gitignore").read_text(),
+            "merged_upstream": import_kernel_tree.merge_gitignore(".*\n", ""),
+            "legacy_footer": import_kernel_tree.merge_gitignore(None, legacy),
+        }
+        for name, rules in cases.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp)
+                init_git_identity(repo)
+                (repo / ".gitignore").write_text(rules)
+                private = "config/kernel/kunzite-stock.config"
+                config = repo / private
+                config.parent.mkdir(parents=True)
+                config.write_text("local stock configuration\n")
+                (repo / "config/devices").mkdir()
+                (repo / "config/devices/new.json").write_text("{}\n")
+                (repo / ".github/workflows").mkdir(parents=True)
+                (repo / ".github/workflows/new.yml").write_text("name: test\n")
+                result = subprocess.run(["git", "check-ignore", "--no-index", "-q", private],
+                                        cwd=repo, check=False)
+                self.assertEqual(result.returncode, 0)
+                untracked = git(["ls-files", "--others", "--exclude-standard"], repo).splitlines()
+                self.assertNotIn(private, untracked)
+                self.assertIn("config/devices/new.json", untracked)
+                self.assertIn(".github/workflows/new.yml", untracked)
+                repaired = import_kernel_tree.merge_gitignore(None, rules)
+                self.assertEqual(import_kernel_tree.merge_gitignore(None, repaired), repaired)
 
     def test_import_rejects_mismatched_commit_or_missing_upstream_doc(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -207,3 +247,4 @@ class KernelTreeImportTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

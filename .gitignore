@@ -29,7 +29,6 @@ modules.order
 .tmp_versions/
 
 # Local stock kernel configuration & private device baseline archives
-/config/kernel/kunzite-stock.config
 /umbrella-kunzite-test-baseline-*.tar.gz
 
 # Explicit Umbrella governance & CI path protections (preserved across upstream Linux .gitignore merges)
@@ -47,3 +46,7 @@ modules.order
 !/tests/**
 !/tools/*.py
 !/tools/*.sh
+
+# Last match wins: governance negations must not expose the local stock config.
+/config/kernel/kunzite-stock.config
+
