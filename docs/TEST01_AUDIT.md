@@ -100,3 +100,12 @@ Before another device trial:
 
 Do not disable signature protection, force module loads or spoof CRCs/version
 strings to turn these checks green. No new image is approved by this audit.
+
+## Follow-up with early ramdisk evidence
+
+The additional baseline has now been inspected. Metadata covers 442 loaded
+module names with CRCs, and locates the separate KernelSU LKM; no core CRC
+mismatch was found in that expanded scope. The observed protection arrays
+also agree between stock and candidate. See [boot failure investigation](BOOT_FAILURE_ANALYSIS.md)
+for sources, exact scope and remaining signature/runtime evidence. The
+original trial still has no confirmed root-cause diagnosis or flash approval.
