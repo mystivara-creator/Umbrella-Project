@@ -307,7 +307,7 @@ def main() -> None:
             errors.append(f"Incompatible module vermagic KMI/page-size token: {vm}")
         if vm.split(" ", 1)[0] != manifest["vendor_module_vermagic_observed"]:
             compatibility_blockers.append(
-                f"Vendor vermagic mismatch: built={vm.split(chr(32), 1)[0]} stock={manifest[\u0027vendor_module_vermagic_observed\u0027]}"
+                f"Vendor vermagic mismatch: built={vm.split(' ', 1)[0]} stock={manifest['vendor_module_vermagic_observed']}"
             )
             warnings.append(
                 f"Built vendor module vermagic differs from observed stock: {vm}. "
