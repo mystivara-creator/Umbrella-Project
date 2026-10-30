@@ -31,11 +31,15 @@ def normalize_modules(data):
     if not isinstance(modules, list):
         raise ValueError("Baseline must contain a modules list or mapping")
     result = []
+    if not modules:
+        raise ValueError("Stock ABI baseline contains no modules")
     for item in modules:
         name = item.get("module") or item.get("name") or item.get("path")
         imports = item.get("imported_symbols")
         if not isinstance(name, str) or not isinstance(imports, dict):
             raise ValueError("Each module needs module/name and imported_symbols mapping")
+        if not imports:
+            raise ValueError(f"Stock ABI module has no imported CRCs: {name}")
         result.append((name, imports, item.get("vermagic", "")))
     return result
 
