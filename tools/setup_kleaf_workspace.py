@@ -56,19 +56,38 @@ AOSP_MINIMAL_PROJECTS = [
 
 
 def run(cmd: list[str], cwd: Path | None = None) -> str:
-    proc = subprocess.run(
-        cmd,
-        cwd=str(cwd) if cwd else None,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        check=False,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"Command failed (exit {proc.returncode}): {' '.join(cmd)}\n{proc.stdout}"
+    # Gitiles and large AOSP prebuilt fetches occasionally terminate mid-pack.
+    # Retry only transient Git transport failures, never missing refs or SHA mismatches.
+    import time
+
+    git_network = len(cmd) > 1 and cmd[0] == "git" and cmd[1] in ("clone", "fetch")
+    attempts = 4 if git_network else 1
+    for attempt in range(attempts):
+        proc = subprocess.run(
+            cmd,
+            cwd=str(cwd) if cwd else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+            env={**os.environ, "GIT_HTTP_VERSION": "HTTP/1.1"} if git_network else None,
         )
-    return proc.stdout.strip()
+        if proc.returncode == 0:
+            return proc.stdout.strip()
+        output = proc.stdout.lower()
+        transient = any(token in output for token in (
+            "early eof", "invalid index-pack output", "rpc failed",
+            "remote end hung up", "connection reset", "connection timed out",
+            "http/2 stream", "curl 56", "curl 92", "unexpected disconnect",
+        ))
+        if not git_network or not transient or attempt + 1 == attempts:
+            raise RuntimeError(
+                f"Command failed (exit {proc.returncode}): {' '.join(cmd)}\n{proc.stdout}"
+            )
+        wait = 3 * (attempt + 1)
+        print(f"[git-retry] transient transport error; attempt {attempt + 2}/{attempts} in {wait}s", flush=True)
+        time.sleep(wait)
+    raise AssertionError("unreachable")
 
 
 def git_head(repo_dir: Path) -> str:
