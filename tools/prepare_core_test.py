@@ -17,6 +17,7 @@ import sys
 import tempfile
 
 from audit_stock_module_abi import normalize_modules
+from audit_core_module_policy import audit_module_policy, stock_boot_kernel
 from verify_build_artifacts import CRITICAL_CONFIGS, extract_embedded_kconfig, parse_kconfig
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -183,6 +184,13 @@ def main():
                             read_owners(args.device_baseline, checked))
     if not audit["scoped_baseline_passed"]:
         raise ValueError("Kernel-only ABI check failed: " + json.dumps(audit["counts"]))
+    loaded = set((args.device_baseline / "loaded-modules.txt").read_text().split())
+    module_policy = audit_module_policy(
+        stock_boot_kernel((args.device_baseline / "boot-backup.img").read_bytes()),
+        kernel, built_cfg, baseline, loaded)
+    if not module_policy["host_checks_passed"]:
+        raise ValueError("Core module policy check failed; no candidate written: "
+                         + json.dumps([f["status"] for f in module_policy["findings"]]))
     if sha(args.avbtool) != AVBTOOL_SHA256:
         raise ValueError("avbtool does not match the pinned source hash")
     spec = importlib.util.spec_from_file_location("qualified_avbtool", args.avbtool)
@@ -224,14 +232,13 @@ def main():
         candidate = image.read_bytes()
         if candidate[4096:4096 + len(kernel)] != kernel:
             raise ValueError("Repacked kernel payload mismatch")
-        loaded = set((args.device_baseline / "loaded-modules.txt").read_text().split())
         covered = {Path(name).name.removesuffix(".ko").replace("-", "_")
                    for name, _, _ in normalize_modules(baseline)}
         report = {"kind": "temporary-boot-only engineering candidate", "device": props,
                   "boot_image_sha256": sha(image), "stock_boot_sha256": original_hash,
                   "kernel_sha256": hashlib.sha256(kernel).hexdigest(),
                   "stock_modules_sha256": sha(args.stock_modules), "gki_config_diff": diff,
-                  "abi": audit, "partition_bytes": partition_size,
+                  "abi": audit, "module_policy": module_policy, "partition_bytes": partition_size,
                   "loaded_module_count": len(loaded),
                   "loaded_modules_without_import_metadata": sorted(loaded - covered),
                   "boot_header_version": 4, "boot_ramdisk_bytes": 0,

@@ -4,6 +4,12 @@
 set -eu
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+include_early_boot=0
+case "$#:${1:-}" in
+    0:) ;;
+    1:--include-early-boot) include_early_boot=1 ;;
+    *) fail 'Usage: collect_test_baseline.sh [--include-early-boot]' ;;
+esac
 for tool in id getprop uname dd mktemp mkdir find cp awk sort tar gzip sha256sum \
     tr dirname chmod date rm; do
     command -v "$tool" >/dev/null 2>&1 || fail "Required command unavailable: $tool"
@@ -42,6 +48,32 @@ printf 'Backing up active boot partition: %s\n' "$boot"
 dd if="$boot" of="$workdir/boot-backup.img" bs=1048576
 [ "$(dd if="$workdir/boot-backup.img" bs=8 count=1 2>/dev/null)" = 'ANDROID!' ] \
     || fail 'Backup does not have an Android boot header.'
+
+# Early modules need not remain visible in mounted dlkm directories after boot.
+# Optional backups permit offline ramdisk inspection; no partition is written.
+if [ "$include_early_boot" = 1 ]; then
+    for kind in vendor_boot init_boot; do
+        partition=
+        for base in /dev/block/by-name /dev/block/bootdevice/by-name; do
+            if [ -b "$base/$kind$slot" ]; then
+                partition="$base/$kind$slot"
+                break
+            fi
+        done
+        if [ -z "$partition" ]; then
+            [ "$kind" = init_boot ] && continue
+            fail "Active $kind partition not found"
+        fi
+        printf 'Backing up active %s partition: %s\n' "$kind" "$partition"
+        dd if="$partition" of="$workdir/$kind-backup.img" bs=1048576
+        magic=$(dd if="$workdir/$kind-backup.img" bs=8 count=1 2>/dev/null)
+        case "$kind:$magic" in
+            vendor_boot:VNDRBOOT|init_boot:ANDROID!) ;;
+            *) fail "Unexpected $kind image header" ;;
+        esac
+        printf 'backup.%s.device=%s\n' "$kind" "$partition" >> "$workdir/device.properties"
+    done
+fi
 
 # Keep both depmod indices and loaded export ownership. Early-boot modules
 # need not be present in vendor_dlkm, so indices alone are insufficient.

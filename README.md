@@ -6,6 +6,11 @@ Umbrella Project is a Mystivara initiative to develop **Umbrella Kernel** as a d
 
 > **Current status: Reproducible build / compatibility verification.** The pipeline assembles SHA-pinned Xiaomi kunzite and Android GKI sources. Build verification and stock vendor ABI compatibility are separate gates; no artifact is approved for flashing.
 
+> **Hardware update (2026-10-31): core-test01 is withdrawn.** Temporary boot was
+> accepted by fastboot, but Android did not reach the home screen. Normal reboot
+> restored the original kernel. See the [test01 audit](docs/TEST01_AUDIT.md);
+> further hardware trials are paused while module loading is investigated.
+
 ## Objectives
 
 - Build and maintain an independently managed kernel source repository using the correct device/vendor upstream baseline, with original attribution retained.

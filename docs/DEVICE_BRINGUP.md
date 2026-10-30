@@ -94,6 +94,12 @@ authorize a flash.
 
 ### First temporary-boot candidate
 
+**Historical candidate, withdrawn after the 2026-10-31 device trial.** Fastboot
+accepted the image, but Android did not complete boot. The instructions below
+describe its construction, not approval to repeat the trial. The current
+preparer rejects the supplied build and incomplete module baseline before
+writing an image; see [test01 audit](TEST01_AUDIT.md).
+
 The supplied active-slot backup has a v4 header, an uncompressed ARM64 kernel,
 an empty boot ramdisk and a 96 MiB partition. Its checksums and original AVB
 SHA256_RSA4096 signature/hash verify. Runtime metadata resolves the two unknown
@@ -135,4 +141,19 @@ Do not substitute a flash command when temporary boot is unavailable. Root
 persistence, bootloader acceptance and peripheral behavior still require the
 physical test. The first candidate is a baseline rebuild, without new runtime
 performance tuning.
+
+### Read-only follow-up collection
+
+To inspect modules from the early ramdisk and the existing root boot layout,
+collect the active vendor_boot and (when present) init_boot along with the
+original baseline. This runs on the working original kernel in Android:
+
+```sh
+su -c "sh '$PWD/tools/collect_test_baseline.sh' --include-early-boot"
+```
+
+This adds read-only active-slot backups to the private archive and checks their
+header magic. The archive can be larger than the earlier collection. Share it
+privately for offline inspection, not as repository content. No temporary boot,
+partition flash, slot change, root removal or recovery installation is needed.
 
