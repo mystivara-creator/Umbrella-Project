@@ -15,6 +15,8 @@ import struct
 import sys
 from pathlib import Path
 
+from audit_stock_module_abi import audit as audit_stock_module_abi
+
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_MANIFEST = ROOT / "config/sources/kernel-source.json"
 
@@ -124,6 +126,10 @@ def main() -> None:
         "--stock-symvers",
         default="",
         help="Optional stock kernel Module.symvers for exported-symbol CRC comparison",
+    )
+    parser.add_argument(
+        "--stock-module-baseline", default="",
+        help="Optional JSON metadata baseline of stock module imported CRCs",
     )
     parser.add_argument(
         "--require-compatibility",
@@ -363,9 +369,31 @@ def main() -> None:
                 f"Module release differs from running stock kernel: {vm}; "
                 "this is not independently proof of incompatibility."
             )
-    compatibility_blockers.append(
-        "Per-module stock vermagic/ABI mapping not yet compared against built modules"
-    )
+    if args.stock_module_baseline:
+        baseline_path = Path(args.stock_module_baseline).expanduser()
+        if not baseline_path.is_file():
+            errors.append(f"Stock module baseline not found: {baseline_path}")
+            compatibility_blockers.append("Stock module ABI baseline unavailable")
+            modules_report["stock_abi"] = {"present": False}
+        else:
+            try:
+                stock_abi = audit_stock_module_abi(baseline_path, dist_dir)
+                modules_report["stock_abi"] = stock_abi
+                if not stock_abi["compatible"]:
+                    counts = stock_abi["counts"]
+                    compatibility_blockers.append(
+                        "Stock module ABI unresolved: "
+                        + ", ".join(f"{k}={v}" for k, v in counts.items() if k != "matched")
+                    )
+            except (ValueError, KeyError, TypeError, OSError, json.JSONDecodeError) as exc:
+                errors.append(f"Invalid stock module ABI baseline: {exc}")
+                compatibility_blockers.append("Stock module ABI audit failed")
+                modules_report["stock_abi"] = {"present": False}
+    else:
+        modules_report["stock_abi"] = {"present": False}
+        compatibility_blockers.append(
+            "Per-module stock vermagic/ABI mapping not yet compared against built modules"
+        )
 
     dtb_files = sorted(dist_dir.glob("*.dtb"))
     dtbo_files = sorted(dist_dir.glob("*.dtbo"))
