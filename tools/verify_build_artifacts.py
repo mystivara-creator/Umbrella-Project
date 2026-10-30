@@ -121,6 +121,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Verify Umbrella Kleaf build artifacts")
     parser.add_argument("--dist-dir", required=True, help="Path to Kleaf dist output directory")
     parser.add_argument(
+        "--stock-symvers",
+        default="",
+        help="Optional stock kernel Module.symvers for exported-symbol CRC comparison",
+    )
+    parser.add_argument(
+        "--require-compatibility",
+        action="store_true",
+        help="Fail CI if any compatibility blockers remain (does not authorize flashing)",
+    )
+    parser.add_argument(
         "--stock-config",
         default=str(ROOT / "config/kernel/kunzite-stock.config"),
         help="Optional path to extracted /proc/config.gz stock config",
@@ -270,6 +280,40 @@ def main() -> None:
             "GKI and vendor Module.symvers comparison unavailable"
         )
 
+    # Compare exported symbols against an independently supplied stock baseline.
+    # Do not treat the current vendor build as evidence of stock compatibility.
+    stock_symvers = Path(args.stock_symvers).expanduser() if args.stock_symvers else None
+    if stock_symvers is not None and stock_symvers.is_file() and symvers_path.is_file():
+        def symbol_crcs(path: Path) -> dict[str, str]:
+            symbols: dict[str, str] = {}
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                fields = line.split()
+                if len(fields) >= 3:
+                    symbols[fields[1]] = fields[0].lower()
+            return symbols
+
+        stock_symbols = symbol_crcs(stock_symvers)
+        built_symbols = symbol_crcs(symvers_path)
+        shared = stock_symbols.keys() & built_symbols.keys()
+        mismatched = sorted(name for name in shared if stock_symbols[name] != built_symbols[name])
+        symvers_report["stock_comparison"] = {
+            "present": True,
+            "stock_sha256": sha256_file(stock_symvers),
+            "stock_symbol_count": len(stock_symbols),
+            "shared_symbol_count": len(shared),
+            "crc_mismatch_count": len(mismatched),
+            "crc_mismatch_samples": mismatched[:30],
+        }
+        if not shared:
+            compatibility_blockers.append("No shared symbols between stock and built Module.symvers")
+        if mismatched:
+            compatibility_blockers.append(
+                f"Stock/built exported symbol CRC mismatches: {len(mismatched)}"
+            )
+    else:
+        symvers_report["stock_comparison"] = {"present": False}
+        compatibility_blockers.append("Stock kernel Module.symvers not supplied for CRC validation")
+
     ko_files = sorted(dist_dir.glob("*.ko"))
     vermagics: set[str] = set()
     sample_modules: dict[str, dict[str, str]] = {}
@@ -338,7 +382,7 @@ def main() -> None:
         compatibility_blockers.append("Boot image not collected: no validated installable kernel image")
     if not (dist_dir / "vendor_boot.img").is_file():
         compatibility_blockers.append("Vendor boot image not collected: partition integration not validated")
-    compatibility_blockers.append("Stock vendor module symbol CRC comparison not performed")
+    compatibility_blockers.append("Stock vendor .ko import CRCs and dependency graph not independently validated")
     compatibility_blockers.append("AVB/vbmeta, partition layout, and recovery path not verified on hardware")
 
     images_report: dict[str, object] = {}
@@ -395,6 +439,9 @@ def main() -> None:
             print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
     print("Verification status: PASS (build verified; flash_approved=false by fail-closed policy)")
+    if args.require_compatibility and compatibility_blockers:
+        print("Compatibility gate FAILED: unresolved blockers", file=sys.stderr)
+        sys.exit(2)
 
 
 if __name__ == "__main__":
