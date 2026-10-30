@@ -4,7 +4,7 @@
 
 Umbrella Project is a Mystivara initiative to develop **Umbrella Kernel** as a device-specific Android/Linux kernel focused on reliability, measurable responsiveness, and energy efficiency. It is designed to optionally cooperate with **CoreFlow Autonomous Engine**.
 
-> **Current status: Foundation / source identification.** This repository does not yet contain a validated kernel source, build, or flashable artifact.
+> **Current status: Reproducible build / compatibility verification.** The pipeline assembles SHA-pinned Xiaomi kunzite and Android GKI sources. Build verification and stock vendor ABI compatibility are separate gates; no artifact is approved for flashing.
 
 ## Objectives
 
@@ -20,8 +20,9 @@ Umbrella-Project/
 ├── config/devices/          Device identity manifests (unverified template initially)
 ├── docs/                    Architecture, bring-up, roadmap, source policy
 ├── interfaces/              Draft optional integration contracts
-├── tools/                   Foundation validation (no kernel compilation)
-├── .github/workflows/       Documentation and manifest validation
+├── tools/                   Workspace assembly, source and artifact/ABI verification
+├── tests/                   Build pipeline and compatibility regression tests
+├── .github/workflows/       Kleaf kernel build and validation
 ├── README.md
 └── .gitignore
 ```
@@ -60,14 +61,33 @@ See [Architecture](docs/ARCHITECTURE.md), [Bring-up](docs/DEVICE_BRINGUP.md), [R
 
 ## Validation
 
-The included validation checks only the **foundation metadata**; it does not build, test, or certify a kernel:
+Run the metadata checks and host regression suite locally:
 
 ```sh
 python3 tools/validate_foundation.py
+python3 tools/validate_device_baseline.py
+python3 tools/source_audit.py
+python3 tools/validate_regions.py
+python3 -m unittest discover -s tests -v
 ```
+
+The **Umbrella Kernel Build** workflow builds ARM64 GKI and vendor outputs. Its
+artifact verifier checks vendor and GKI critical Kconfig options independently,
+rejects invalid AArch64 module metadata, and writes `umbrella-build-report.json`.
+Run it locally against downloaded dist outputs with:
+
+```sh
+python3 tools/verify_build_artifacts.py --dist-dir /path/to/dist
+```
+
+Supply `--stock-module-baseline /path/to/stock-module-metadata.json` to compare
+stock imported symbol CRCs with built exports. Use `--require-compatibility` to
+fail on unresolved compatibility blockers. Passing host tests or the build gate
+does not certify device compatibility; `flash_approved` remains `false`.
 
 ## Safety and licensing
 
 Do not flash unverified images. Kernel development can cause failure to boot and data loss. Upstream code and modifications are subject to their applicable licenses and source distribution obligations. A project-level license for original materials should be decided separately after source provenance is established.
 
 Umbrella Project is an independent software effort, not affiliated with Xiaomi, Capcom, or Umbrella Corporation from Resident Evil.
+

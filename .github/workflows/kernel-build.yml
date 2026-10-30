@@ -263,6 +263,7 @@ jobs:
             ${{ env.KLEAF_WS }}/out/msm-kernel-kunzite-${{ inputs.variant || 'perf' }}/dist/workspace-provenance.json
             ${{ env.KLEAF_WS }}/out/msm-kernel-kunzite-${{ inputs.variant || 'perf' }}/dist/umbrella-build-report.json
           retention-days: 14
+          include-hidden-files: true
           if-no-files-found: error
 
       - name: Upload failure diagnostics
@@ -273,3 +274,4 @@ jobs:
           path: ${{ runner.temp }}/umbrella-diagnostics/
           retention-days: 7
           if-no-files-found: ignore
+

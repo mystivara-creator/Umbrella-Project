@@ -8,6 +8,7 @@ on:
       - 'interfaces/**'
       - 'config/devices/**'
       - 'tools/**'
+      - 'tests/**'
       - '.github/workflows/foundation.yml'
   pull_request:
   workflow_dispatch:
@@ -22,3 +23,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate foundation metadata
         run: python3 tools/validate_foundation.py
+      - name: Run build and ABI regression tests
+        run: python3 -m unittest discover -s tests -v
+

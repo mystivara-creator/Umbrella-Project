@@ -205,6 +205,65 @@ class BuildPipelineTests(unittest.TestCase):
             self.assertTrue(report["devicetree"]["kunzite_overlay_contains_parrot_qrd"])
             self.assertEqual(report["images"]["boot.img"]["header_version"], 4)
 
+            # A present GKI config must be audited, independently of vendor config.
+            gki = dist / "gki.config"
+            valid_gki = (dist / ".config").read_text().replace(
+                "# CONFIG_MODULE_SIG_ALL is not set", "CONFIG_MODULE_SIG_ALL=y")
+            gki.write_text(valid_gki)
+            command = [sys.executable, str(ROOT / "tools/verify_build_artifacts.py"),
+                       "--dist-dir", str(dist), "--report-out", str(report_file)]
+            passed = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(passed.returncode, 0, passed.stderr)
+            good_report = json.loads(report_file.read_text())
+            self.assertEqual(good_report["gki_kconfig"]["CONFIG_MODULE_SIG_ALL"]["actual"], "y")
+
+            cases = [
+                ("gki-cfi", gki, valid_gki.replace("CONFIG_CFI_CLANG=y", "CONFIG_CFI_CLANG=n").encode(),
+                 "Critical GKI Kconfig mismatch: CONFIG_CFI_CLANG=n"),
+                ("gki-trim", gki, valid_gki.replace("CONFIG_TRIM_UNUSED_KSYMS=y", "CONFIG_TRIM_UNUSED_KSYMS=n").encode(),
+                 "Critical GKI Kconfig mismatch: CONFIG_TRIM_UNUSED_KSYMS=n"),
+                ("broken-module", dist / "broken.ko", b"\\x7fELF", "Invalid module broken.ko"),
+                ("missing-vermagic", dist / "broken.ko", build_minimal_aarch64_ko({"intree": "Y"}),
+                 "Missing vermagic in module broken.ko"),
+                ("truncated-boot", dist / "boot.img", b"ANDROID!", "Invalid image boot.img"),
+            ]
+            for label, path, payload, expected in cases:
+                with self.subTest(label=label):
+                    original = path.read_bytes() if path.exists() else None
+                    path.write_bytes(payload)
+                    failed = subprocess.run(command, capture_output=True, text=True)
+                    self.assertEqual(failed.returncode, 1, failed.stderr)
+                    rejected = json.loads(report_file.read_text())
+                    self.assertFalse(rejected["build_verification_passed"])
+                    self.assertFalse(rejected["flash_approved"])
+                    self.assertTrue(any(expected in e for e in rejected["errors"]), rejected["errors"])
+                    self.assertNotIn("Traceback", failed.stderr)
+                    if original is None:
+                        path.unlink()
+                    else:
+                        path.write_bytes(original)
+
+    def test_rejects_malformed_elf_section_tables_and_wrong_architecture(self) -> None:
+        good = build_minimal_aarch64_ko({"vermagic": "6.6.118-4k"})
+        wrong_arch = bytearray(good)
+        struct.pack_into("<H", wrong_arch, 18, 62)  # EM_X86_64
+        bad_stride = bytearray(good)
+        struct.pack_into("<H", bad_stride, 58, 1)
+        outside = bytearray(good)
+        struct.pack_into("<Q", outside, 40, len(good) + 1)
+        bad_name = bytearray(good)
+        section_table = struct.unpack_from("<Q", good, 40)[0]
+        struct.pack_into("<I", bad_name, section_table + 128, 1000)
+        bad_modinfo = bytearray(good)
+        struct.pack_into("<Q", bad_modinfo, section_table + 128 + 32, len(good))
+        with tempfile.TemporaryDirectory() as tmp:
+            ko = Path(tmp) / "module.ko"
+            for payload in (good[:63], good[:-1], wrong_arch, bad_stride, outside, bad_name, bad_modinfo):
+                with self.subTest(payload_length=len(payload)):
+                    ko.write_bytes(payload)
+                    with self.assertRaises(ValueError):
+                        verify_build_artifacts.extract_elf_modinfo(ko)
+
     def test_github_workflows_valid_yaml_and_no_masked_bazel_failures(self) -> None:
         wf_dir = ROOT / ".github/workflows"
         workflows = sorted(wf_dir.glob("*.yml"))
@@ -222,6 +281,7 @@ class BuildPipelineTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:", raw_kb)
         self.assertIn("push:", raw_kb)
         self.assertIn("inputs:", raw_kb)
+        self.assertIn("include-hidden-files: true", raw_kb)
         if yaml is not None:
             kb = yaml.safe_load(raw_kb)
             triggers = kb.get("on") or kb.get(True)
@@ -237,3 +297,4 @@ class BuildPipelineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

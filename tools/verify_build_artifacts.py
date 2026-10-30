@@ -60,11 +60,14 @@ def extract_elf_modinfo(ko_path: Path) -> dict[str, str]:
     """Extract key=value strings from the .modinfo section of an AArch64 ELF64 .ko."""
     data = ko_path.read_bytes()
     if len(data) < 64 or data[:4] != b"\x7fELF" or data[4] != 2 or data[5] != 1:
-        return {}
+        raise ValueError("Expected a little-endian ELF64 module")
+    if struct.unpack_from("<HH", data, 16) != (1, 183):
+        raise ValueError("Expected an AArch64 relocatable module")
     e_shoff = struct.unpack_from("<Q", data, 40)[0]
     e_shentsize, e_shnum, e_shstrndx = struct.unpack_from("<HHH", data, 58)
-    if e_shoff == 0 or e_shnum == 0 or e_shstrndx >= e_shnum:
-        return {}
+    if (e_shoff < 64 or e_shnum == 0 or e_shstrndx >= e_shnum
+            or e_shentsize != 64 or e_shoff + e_shnum * e_shentsize > len(data)):
+        raise ValueError("Invalid or truncated ELF section header table")
 
     def shdr(idx: int) -> tuple[int, int, int, int]:
         off = e_shoff + idx * e_shentsize
@@ -73,14 +76,22 @@ def extract_elf_modinfo(ko_path: Path) -> dict[str, str]:
         )
         return sh_name, sh_type, sh_offset, sh_size
 
-    _, _, str_off, str_size = shdr(e_shstrndx)
+    _, str_type, str_off, str_size = shdr(e_shstrndx)
+    if str_type != 3 or not str_size or str_off + str_size > len(data):
+        raise ValueError("Invalid ELF section name table")
     shstrtab = data[str_off : str_off + str_size]
 
     for i in range(e_shnum):
         sh_name, _, sh_offset, sh_size = shdr(i)
+        if sh_name >= len(shstrtab):
+            raise ValueError("ELF section name outside string table")
         end = shstrtab.find(b"\x00", sh_name)
+        if end < 0:
+            raise ValueError("Unterminated ELF section name")
         sec_name = shstrtab[sh_name:end].decode("ascii", errors="replace")
         if sec_name == ".modinfo":
+            if sh_offset + sh_size > len(data):
+                raise ValueError("Truncated .modinfo section")
             sec = data[sh_offset : sh_offset + sh_size]
             info: dict[str, str] = {}
             for entry in sec.split(b"\x00"):
@@ -88,11 +99,14 @@ def extract_elf_modinfo(ko_path: Path) -> dict[str, str]:
                     k, v = entry.decode("utf-8", errors="replace").split("=", 1)
                     info[k.strip()] = v.strip()
             return info
-    return {}
+    raise ValueError("Missing .modinfo section")
 
 
 def inspect_boot_header(img_path: Path) -> dict[str, object]:
-    head = img_path.read_bytes()[:64]
+    with img_path.open("rb") as stream:
+        head = stream.read(64)
+    if head.startswith((b"ANDROID!", b"VNDRBOOT")) and len(head) < 64:
+        raise ValueError("Truncated Android image header")
     if head.startswith(b"ANDROID!"):
         kernel_sz, ramdisk_sz, os_ver, hdr_sz = struct.unpack_from("<IIII", head, 8)
         hdr_ver = struct.unpack_from("<I", head, 40)[0]
@@ -175,8 +189,16 @@ def main() -> None:
     if not symvers_path.is_file():
         errors.append("Missing Module.symvers in dist directory")
 
+    gki_config_report: dict[str, object] = {}
     if not (dist_dir / "gki.config").is_file():
         compatibility_blockers.append("GKI .config unavailable: core KMI/security configuration not independently audited")
+    else:
+        gki_cfg = parse_kconfig(dist_dir / "gki.config")
+        for key, expected in {**CRITICAL_CONFIGS, "CONFIG_MODULE_SIG_ALL": "y"}.items():
+            actual = gki_cfg.get(key, "MISSING")
+            gki_config_report[key] = {"expected": expected, "actual": actual}
+            if actual != expected:
+                errors.append(f"Critical GKI Kconfig mismatch: {key}={actual} (expected {expected})")
 
     config_report: dict[str, object] = {}
     if config_path.is_file():
@@ -324,10 +346,16 @@ def main() -> None:
     vermagics: set[str] = set()
     sample_modules: dict[str, dict[str, str]] = {}
     for ko in ko_files:
-        info = extract_elf_modinfo(ko)
+        try:
+            info = extract_elf_modinfo(ko)
+        except ValueError as exc:
+            errors.append(f"Invalid module {ko.name}: {exc}")
+            continue
         vm = info.get("vermagic", "")
         if vm:
             vermagics.add(vm)
+        else:
+            errors.append(f"Missing vermagic in module {ko.name}")
         if ko.name in (
             "sched-walt.ko",
             "xiaomi-cpumaxfreq.ko",
@@ -426,10 +454,15 @@ def main() -> None:
     for img_name in ("boot.img", "init_boot.img", "vendor_boot.img", "dtbo.img", "vendor_dlkm.img", "system_dlkm.ext4.img", "system_dlkm.erofs.img"):
         ip = dist_dir / img_name
         if ip.is_file():
+            try:
+                header = inspect_boot_header(ip)
+            except ValueError as exc:
+                errors.append(f"Invalid image {img_name}: {exc}")
+                header = {"type": "invalid", "error": str(exc)}
             images_report[img_name] = {
                 "size_bytes": ip.stat().st_size,
                 "sha256": sha256_file(ip),
-                **inspect_boot_header(ip),
+                **header,
             }
 
     report = {
@@ -441,6 +474,7 @@ def main() -> None:
         },
         "core_artifacts": artifacts_summary,
         "kconfig": config_report,
+        "gki_kconfig": gki_config_report,
         "symvers": symvers_report,
         "modules": modules_report,
         "devicetree": dt_report,
@@ -483,3 +517,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
