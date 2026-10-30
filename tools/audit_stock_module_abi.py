@@ -78,6 +78,34 @@ def audit(baseline_path, dist_dir):
     exports = read_exports([Path(dist_dir) / "gki.Module.symvers",
                             Path(dist_dir) / "Module.symvers"])
     result = compare(baseline, exports)
+    # Keep provider identity and input provenance visible. In mixed GKI/vendor
+    # builds the same module path can occur in both tables with different CRCs;
+    # choosing whichever CRC matches stock would hide an unresolved install policy.
+    groups = {}
+    for finding in result["findings"]:
+        if finding["status"] != "crc_mismatch":
+            continue
+        for provider in finding["providers"]:
+            group = groups.setdefault(provider["module"], {
+                "import_count": 0, "symbols": set(), "consumers": set()})
+            group["import_count"] += 1
+            group["symbols"].add(finding["symbol"])
+            group["consumers"].add(finding["module"])
+    result["crc_mismatches_by_provider"] = {
+        name: {"import_count": group["import_count"],
+               "symbols": sorted(group["symbols"]),
+               "consumers": sorted(group["consumers"])}
+        for name, group in sorted(groups.items())}
+    ambiguous = {f["symbol"] for f in result["findings"]
+                 if f["status"] == "ambiguous_export"}
+    conflicts = {symbol: [] for symbol in sorted(ambiguous)}
+    for filename in ("gki.Module.symvers", "Module.symvers"):
+        table = read_exports([Path(dist_dir) / filename])
+        for symbol in sorted(ambiguous):
+            conflicts[symbol].extend(
+                {"source": filename, "module": provider, "crc": crc}
+                for provider, crc in sorted(table.get(symbol, set())))
+    result["ambiguous_export_sources"] = conflicts
     result["baseline_sha256"] = __import__("hashlib").sha256(
         Path(baseline_path).read_bytes()).hexdigest()
     result["export_symbol_count"] = len(exports)
@@ -106,3 +134,4 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

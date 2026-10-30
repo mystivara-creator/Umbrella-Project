@@ -53,6 +53,30 @@ class StockModuleAbiTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             compare({"modules": [{"module": "empty.ko", "imported_symbols": {}}]}, {})
 
+    def test_provider_groups_and_conflicting_input_provenance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "baseline.json").write_text(json.dumps({"modules": [
+                {"module": "vendor/mhi_dev_dtr.ko", "imported_symbols": {
+                    "mhi_queue_buf": "0x201ac5db"}},
+                {"module": "system/hidp.ko", "imported_symbols": {
+                    "l2cap_conn_get": "0xe0fa0035"}}]}))
+            (base / "gki.Module.symvers").write_text(
+                "0xe0fa0035\tl2cap_conn_get\tnet/bluetooth/bluetooth\tEXPORT_SYMBOL\n")
+            (base / "Module.symvers").write_text(
+                "0xa991844b\tl2cap_conn_get\tnet/bluetooth/bluetooth\tEXPORT_SYMBOL\n"
+                "0x56e4f3df\tmhi_queue_buf\tdrivers/bus/mhi/host/mhi\tEXPORT_SYMBOL\n")
+            report = audit(base / "baseline.json", base)
+            self.assertFalse(report["compatible"])
+            self.assertEqual(report["counts"]["ambiguous_export"], 1)
+            self.assertEqual(report["crc_mismatches_by_provider"], {
+                "drivers/bus/mhi/host/mhi": {"import_count": 1,
+                    "symbols": ["mhi_queue_buf"], "consumers": ["vendor/mhi_dev_dtr.ko"]}})
+            self.assertEqual(report["ambiguous_export_sources"]["l2cap_conn_get"], [
+                {"source": "gki.Module.symvers", "module": "net/bluetooth/bluetooth", "crc": "0xe0fa0035"},
+                {"source": "Module.symvers", "module": "net/bluetooth/bluetooth", "crc": "0xa991844b"}])
+            json.dumps(report)  # Reports must remain directly serializable.
+
     def test_malformed_baseline_rejected(self):
         with self.assertRaises(ValueError):
             normalize_modules({"modules": [{"module": "broken.ko"}]})
@@ -60,3 +84,4 @@ class StockModuleAbiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
