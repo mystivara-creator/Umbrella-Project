@@ -47,6 +47,12 @@ class StockModuleAbiTests(unittest.TestCase):
             self.assertFalse(report["compatible"])
             self.assertFalse(report["export_sources_present"]["gki.Module.symvers"])
 
+    def test_empty_baseline_rejected(self):
+        with self.assertRaises(ValueError):
+            normalize_modules({"modules": []})
+        with self.assertRaises(ValueError):
+            compare({"modules": [{"module": "empty.ko", "imported_symbols": {}}]}, {})
+
     def test_malformed_baseline_rejected(self):
         with self.assertRaises(ValueError):
             normalize_modules({"modules": [{"module": "broken.ko"}]})
