@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Unit and integration tests for Umbrella Kernel build provenance, ELF/FDT verifiers, and CI workflows."""
 import copy
+import gzip
 import json
 import struct
 import subprocess
@@ -133,6 +134,21 @@ class BuildPipelineTests(unittest.TestCase):
             self.assertIn("6.6.118-android15-8-", info["vermagic"])
             self.assertIn("4k", info["vermagic"])
 
+    def test_embedded_kconfig_requires_complete_gzip_and_end_marker(self) -> None:
+        config = b"# Kernel configuration\nCONFIG_MODULES=y\n"
+        compressed = gzip.compress(config)
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "Image"
+            image.write_bytes(b"IKCFG_STinvalid" + b"padding" +
+                              b"IKCFG_ST" + compressed + b"IKCFG_EDtrailer")
+            self.assertEqual(verify_build_artifacts.extract_embedded_kconfig(image), config)
+            for payload in (b"IKCFG_ST" + compressed,
+                            b"IKCFG_ST" + compressed[:-4] + b"IKCFG_ED",
+                            b"IKCFG_ST" + gzip.compress(b"x" * (4 * 1024 * 1024 + 1)) + b"IKCFG_ED"):
+                image.write_bytes(payload)
+                with self.assertRaises(ValueError):
+                    verify_build_artifacts.extract_embedded_kconfig(image)
+
     def test_verify_build_artifacts_end_to_end_fail_closed_flash_gate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             dist = Path(tmp) / "dist"
@@ -242,6 +258,17 @@ class BuildPipelineTests(unittest.TestCase):
                         path.unlink()
                     else:
                         path.write_bytes(original)
+
+            gki.unlink()
+            (dist / "Image").write_bytes(
+                b"kernel-prefix" + b"IKCFG_ST" + gzip.compress(valid_gki.encode()) + b"IKCFG_ED")
+            recovered = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(recovered.returncode, 0, recovered.stderr)
+            recovered_report = json.loads(report_file.read_text())
+            self.assertEqual(gki.read_text(), valid_gki)
+            self.assertEqual(recovered_report["gki_config_source"], "Image/IKCONFIG")
+            self.assertIn("gki.config", recovered_report["core_artifacts"])
+            self.assertFalse(any("GKI .config unavailable" in b for b in recovered_report["compatibility_blockers"]))
 
     def test_rejects_malformed_elf_section_tables_and_wrong_architecture(self) -> None:
         good = build_minimal_aarch64_ko({"vermagic": "6.6.118-4k"})

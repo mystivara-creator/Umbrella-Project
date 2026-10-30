@@ -13,6 +13,7 @@ import hashlib
 import json
 import struct
 import sys
+import zlib
 from pathlib import Path
 
 from audit_stock_module_abi import audit as audit_stock_module_abi
@@ -54,6 +55,26 @@ def parse_kconfig(path: Path) -> dict[str, str]:
             k, v = line.split("=", 1)
             cfg[k] = v
     return cfg
+
+
+def extract_embedded_kconfig(image_path: Path) -> bytes:
+    """Read Linux IKCONFIG from an uncompressed ARM64 Image, with bounded output."""
+    data = image_path.read_bytes()
+    marker = b"IKCFG_ST"
+    offset = data.find(marker)
+    while offset >= 0:
+        payload = data[offset + len(marker):]
+        try:
+            decoder = zlib.decompressobj(31)
+            config = decoder.decompress(payload, 4 * 1024 * 1024)
+            if (decoder.eof and decoder.unused_data.startswith(b"IKCFG_ED")
+                    and b"\nCONFIG_" in config):
+                config.decode("utf-8")  # Do not persist undecodable metadata.
+                return config
+        except (zlib.error, UnicodeDecodeError):
+            pass
+        offset = data.find(marker, offset + len(marker))
+    raise ValueError("No valid bounded IKCONFIG payload found in Image")
 
 
 def extract_elf_modinfo(ko_path: Path) -> dict[str, str]:
@@ -190,6 +211,18 @@ def main() -> None:
         errors.append("Missing Module.symvers in dist directory")
 
     gki_config_report: dict[str, object] = {}
+    gki_config_source = "dist/gki.config"
+    if not (dist_dir / "gki.config").is_file() and image_path.is_file():
+        try:
+            embedded_config = extract_embedded_kconfig(image_path)
+            (dist_dir / "gki.config").write_bytes(embedded_config)
+            gki_config_source = "Image/IKCONFIG"
+            artifacts_summary["gki.config"] = {
+                "size_bytes": len(embedded_config),
+                "sha256": sha256_file(dist_dir / "gki.config"),
+            }
+        except ValueError as exc:
+            warnings.append(f"GKI embedded config unavailable: {exc}")
     if not (dist_dir / "gki.config").is_file():
         compatibility_blockers.append("GKI .config unavailable: core KMI/security configuration not independently audited")
     else:
@@ -475,6 +508,7 @@ def main() -> None:
         "core_artifacts": artifacts_summary,
         "kconfig": config_report,
         "gki_kconfig": gki_config_report,
+        "gki_config_source": gki_config_source if gki_config_report else None,
         "symvers": symvers_report,
         "modules": modules_report,
         "devicetree": dt_report,
