@@ -276,6 +276,86 @@ def force_symlink(target: str, link_path: Path) -> None:
     os.symlink(target, link_path)
 
 
+EXCLUDED_IN_REPO_ENTRIES = {
+    ".umbrella-workspace",
+    ".github",
+    "patches",
+    "app.py",
+    "static",
+    "metadata.json",
+    "package.json",
+    "requirements.txt",
+    "__pycache__",
+}
+
+
+def detect_in_repo_role(umbrella_root: Path, manifest: dict) -> str | None:
+    in_repo = manifest.get("in_repo_tree")
+    if not isinstance(in_repo, dict):
+        return None
+    role = in_repo.get("role")
+    if role not in ("common_kernel", "msm_kernel"):
+        raise RuntimeError(f"Unsupported in_repo_tree.role: {role}")
+    if not (umbrella_root / "Makefile").is_file() or not (umbrella_root / "arch/arm64").is_dir():
+        raise RuntimeError(
+            f"Manifest declares in_repo_tree ({role}), but {umbrella_root} lacks Makefile or arch/arm64"
+        )
+    return role
+
+
+def bind_in_repo_kernel_tree(umbrella_root: Path, dest: Path) -> str:
+    """Bind an in-repo kernel source tree into Kleaf workspace without recursive .umbrella-workspace loops."""
+    umbrella_root = umbrella_root.resolve()
+    if dest.is_symlink():
+        dest.unlink()
+    elif dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+
+    for entry in sorted(umbrella_root.iterdir(), key=lambda p: p.name):
+        if entry.name in EXCLUDED_IN_REPO_ENTRIES:
+            continue
+        os.symlink(entry, dest / entry.name)
+
+    head = git_head(umbrella_root) if (umbrella_root / ".git").exists() else "working-tree"
+    print(f"[bind-in-repo] {dest} -> {umbrella_root} ({head[:12]})")
+    return f"in-repo:{head}"
+
+
+def apply_component_patches(umbrella_root: Path, cname: str, repo_dir: Path) -> list[dict[str, str]]:
+    import hashlib
+
+    candidates = [
+        umbrella_root / "patches" / cname,
+        umbrella_root / "patches" / cname.replace("_", "-"),
+    ]
+    patch_files: list[Path] = []
+    seen_dirs: set[Path] = set()
+    for pdir in candidates:
+        if pdir.is_dir() and pdir.resolve() not in seen_dirs:
+            seen_dirs.add(pdir.resolve())
+            patch_files.extend(sorted(pdir.glob("*.patch")))
+
+    applied: list[dict[str, str]] = []
+    for pfile in patch_files:
+        digest = hashlib.sha256(pfile.read_bytes()).hexdigest()
+        rev_chk = subprocess.run(
+            ["git", "apply", "--reverse", "--check", str(pfile)],
+            cwd=str(repo_dir),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if rev_chk.returncode == 0:
+            print(f"[patch-skip] {cname}: {pfile.name} already applied")
+        else:
+            print(f"[patch-apply] {cname}: applying {pfile.name}")
+            run(["git", "apply", "--check", str(pfile)], cwd=repo_dir)
+            run(["git", "apply", str(pfile)], cwd=repo_dir)
+        applied.append({"component": cname, "patch": pfile.name, "sha256": digest})
+    return applied
+
+
 def wire_workspace_links(ws: Path) -> None:
     force_symlink("../build/kernel/kleaf/bazel.sh", ws / "tools/bazel")
     force_symlink("build/kernel/kleaf/bazel.WORKSPACE", ws / "WORKSPACE")
@@ -296,6 +376,11 @@ def wire_workspace_links(ws: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Setup minimal Kleaf + Xiaomi kunzite workspace")
     parser.add_argument("--workspace", required=True, help="Target Kleaf workspace directory")
+    parser.add_argument(
+        "--umbrella-root",
+        default=str(ROOT),
+        help="Path to Umbrella-Project root (auto-binds in-repo kernel tree when present)",
+    )
     parser.add_argument(
         "--query-only",
         action="store_true",
@@ -320,7 +405,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    manifest = json.loads(SOURCE_MANIFEST.read_text(encoding="utf-8"))
+    umbrella_root = Path(args.umbrella_root).expanduser().resolve()
+    manifest_file = umbrella_root / "config/sources/kernel-source.json"
+    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    in_repo_role = detect_in_repo_role(umbrella_root, manifest)
+
     ws = Path(args.workspace).expanduser().resolve()
     ws.mkdir(parents=True, exist_ok=True)
 
@@ -337,9 +426,15 @@ def main() -> None:
     default_branch = manifest["aosp_kleaf_manifest_branch"]
     clang_version = manifest["clang_version"]
     provenance: dict[str, str] = {}
+    applied_patches: list[dict[str, str]] = []
 
-    primary_order = ["kernel_build", "msm_kernel", "external_dtc"]
-    if not args.query_only or not (ws / "common/.git").exists():
+    if in_repo_role is not None:
+        provenance[in_repo_role] = bind_in_repo_kernel_tree(
+            umbrella_root, ws / components[in_repo_role]["path"]
+        )
+
+    primary_order = [c for c in ("kernel_build", "msm_kernel", "external_dtc") if c != in_repo_role]
+    if in_repo_role != "common_kernel" and (not args.query_only or not (ws / "common/.git").exists()):
         primary_order.append("common_kernel")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(args.jobs, 4)) as pool:
@@ -359,13 +454,23 @@ def main() -> None:
             provenance[cname] = fut.result()
 
     dt_comp = components["kernel_devicetree"]
-    provenance["kernel_devicetree"] = ensure_pinned_commit(
-        "kernel_devicetree",
-        dt_comp["repository"],
-        ws / dt_comp["path"],
-        dt_comp["commit"],
-        args.reuse_existing,
-    )
+    dt_dest = ws / dt_comp["path"]
+    if in_repo_role == "msm_kernel" and (umbrella_root / "arch/arm64/boot/dts/vendor/BUILD.bazel").is_file():
+        provenance["kernel_devicetree"] = provenance["msm_kernel"]
+    else:
+        provenance["kernel_devicetree"] = ensure_pinned_commit(
+            "kernel_devicetree",
+            dt_comp["repository"],
+            dt_dest,
+            dt_comp["commit"],
+            args.reuse_existing,
+        )
+
+    for cname in ("common_kernel", "msm_kernel", "kernel_devicetree"):
+        if cname != in_repo_role and (ws / components[cname]["path"]).exists():
+            applied_patches.extend(
+                apply_component_patches(umbrella_root, cname, ws / components[cname]["path"])
+            )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
         aosp_futs = {
@@ -398,7 +503,9 @@ def main() -> None:
                 "device": manifest["device"],
                 "codename": manifest["codename"],
                 "clang_version": clang_version,
+                "in_repo_role": in_repo_role,
                 "query_only": args.query_only,
+                "applied_patches": applied_patches,
                 "repositories": provenance,
             },
             indent=2,

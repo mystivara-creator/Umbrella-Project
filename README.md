@@ -32,7 +32,7 @@ Umbrella-Project/
 └── .gitignore
 ```
 
-A real Linux kernel source tree (e.g. `arch`, `drivers`, `include`, `kernel`, `mm`) will only be added **after** a compatible kernel source and licensing obligations are verified.
+Upstream provenance and license obligations are recorded in [UPSTREAM](docs/UPSTREAM.md). Establish the pinned Linux kernel source tree (`arch/`, `drivers/`, `include/`, `kernel/`, `mm/`, `COPYING`, `Makefile`, `BUILD.bazel`) in a local Git checkout with `python3 tools/import_kernel_tree.py --role common`.
 
 ## Architecture
 
@@ -62,7 +62,7 @@ mystivara-creator/
 5. Introduce independently benchmarked improvements with clear rollback plans.
 6. Implement an optional, versioned Umbrella–CoreFlow capability interface only where standard interfaces are insufficient.
 
-See [Architecture](docs/ARCHITECTURE.md), [Bring-up](docs/DEVICE_BRINGUP.md), [Roadmap](docs/ROADMAP.md), and [Source policy](docs/SOURCE_POLICY.md).
+See [Architecture](docs/ARCHITECTURE.md), [Bring-up](docs/DEVICE_BRINGUP.md), [Roadmap](docs/ROADMAP.md), [Source policy](docs/SOURCE_POLICY.md), and [Upstream provenance](docs/UPSTREAM.md).
 
 ## Validation
 

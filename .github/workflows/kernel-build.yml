@@ -26,9 +26,38 @@ on:
       - '.github/workflows/kernel-build.yml'
       - 'config/sources/kernel-source.json'
       - 'tools/source_audit.py'
+      - 'tools/import_kernel_tree.py'
       - 'tools/setup_kleaf_workspace.py'
       - 'tools/verify_build_artifacts.py'
       - 'tests/test_build_pipeline.py'
+      - 'tests/test_kernel_tree_import.py'
+      - 'arch/**'
+      - 'block/**'
+      - 'certs/**'
+      - 'crypto/**'
+      - 'drivers/**'
+      - 'fs/**'
+      - 'include/**'
+      - 'init/**'
+      - 'io_uring/**'
+      - 'ipc/**'
+      - 'kernel/**'
+      - 'lib/**'
+      - 'mm/**'
+      - 'net/**'
+      - 'rust/**'
+      - 'scripts/**'
+      - 'security/**'
+      - 'sound/**'
+      - 'usr/**'
+      - 'virt/**'
+      - 'android/**'
+      - 'patches/**'
+      - 'Makefile'
+      - 'Kbuild'
+      - 'Kconfig'
+      - 'BUILD.bazel'
+      - '*.bzl'
 
 permissions:
   contents: read
@@ -53,6 +82,8 @@ jobs:
     steps:
       - name: Checkout Umbrella repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Audit repository & source provenance gates
         run: |

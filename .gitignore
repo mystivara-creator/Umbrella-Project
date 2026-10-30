@@ -7,9 +7,15 @@
 __pycache__/
 *.py[cod]
 
-# Kernel builds (once sources are introduced)
-out/
-build/
+# Umbrella root-anchored workspace & output directories
+# (Anchored with leading '/' so Linux kernel subdirectories such as tools/build/ are NEVER ignored)
+/out/
+/build/
+/dist/
+/.umbrella-workspace/
+/bazel-*/
+
+# Kernel build artifacts (when building in-tree without O=)
 *.o
 *.ko
 *.cmd
@@ -22,7 +28,22 @@ Module.symvers
 modules.order
 .tmp_versions/
 
-# Keep release artifacts out of the source history unless explicitly planned.
-
-# Local stock kernel configuration
+# Local stock kernel configuration & private device baseline archives
 /config/kernel/kunzite-stock.config
+/umbrella-kunzite-test-baseline-*.tar.gz
+
+# Explicit Umbrella governance & CI path protections (preserved across upstream Linux .gitignore merges)
+!/.github/
+!/.github/**
+!/config/
+!/config/**
+!/docs/
+!/docs/**
+!/interfaces/
+!/interfaces/**
+!/patches/
+!/patches/**
+!/tests/
+!/tests/**
+!/tools/*.py
+!/tools/*.sh

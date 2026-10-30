@@ -21,13 +21,13 @@
     <header class="topbar">
       <div class="container topbar-inner">
         <div>
-          <div class="eyebrow">UMBRELLA PROJECT // REDMI NOTE 15 5G (KUNZITE / PARROT SM6475)</div>
-          <h1>Kernel Build &amp; Provenance Engineering Console</h1>
+          <div class="eyebrow">UMBRELLA PROJECT // SYNCED @ d2de191f161f // KUNZITE (SM6475)</div>
+          <h1>Kernel Source Tree &amp; Compatibility Engineering Console</h1>
         </div>
         <div class="topbar-actions">
-          <button id="refreshBtn" class="btn btn-secondary" type="button">Re-run Gates</button>
-          <a href="/api/bundle.sh" class="btn btn-primary" download="apply-umbrella-fixes.sh">
-            Download Termux Patch (.sh)
+          <button id="refreshBtn" class="btn btn-secondary" type="button">Re-run 35 Tests &amp; Gates</button>
+          <a href="/api/bundle.sh" class="btn btn-primary" download="apply-source-tree-kit.sh">
+            Download Source Tree Kit (.sh)
           </a>
         </div>
       </div>
@@ -36,30 +36,30 @@
     <main class="container main-grid">
       <section class="status-strip" id="statusStrip">
         <div class="metric-card">
-          <span class="metric-label">CI &amp; Provenance Gates</span>
+          <span class="metric-label">Gates &amp; Regression Suite</span>
           <strong class="metric-value" id="gatesStatus">Memeriksa...</strong>
-          <span class="metric-sub" id="gatesSub">5 repository &amp; unit test gates</span>
+          <span class="metric-sub" id="gatesSub">Build + Stock ABI + Module Policy + Tree Import</span>
         </div>
         <div class="metric-card">
-          <span class="metric-label">Arsitektur Build</span>
-          <strong class="metric-value mono">qualcomm_kleaf_mixed_build</strong>
-          <span class="metric-sub">GKI 6.6.118 (android15-8) + Vendor 6.6.56</span>
+          <span class="metric-label">Baseline Source Tree</span>
+          <strong class="metric-value mono" id="treeRoleLabel">common@e56cf6b09cca</strong>
+          <span class="metric-sub">Linux 6.6.118-android15-8 (`arch/`, `drivers/`, `kernel/`, `mm/`)</span>
         </div>
         <div class="metric-card">
-          <span class="metric-label">Toolchain &amp; KMI</span>
-          <strong class="metric-value mono">clang-r510928 (Clang 18)</strong>
-          <span class="metric-sub">4K page | CFI + SCS + MODVERSIONS</span>
+          <span class="metric-label">GitHub Actions CI</span>
+          <strong class="metric-value text-emerald mono">BUILD GREEN</strong>
+          <span class="metric-sub">Runs #41030922231 &amp; #41035617036</span>
         </div>
         <div class="metric-card warn-border">
-          <span class="metric-label">Status Keamanan Flash</span>
-          <strong class="metric-value text-amber">NOT APPROVED (FAIL-CLOSED)</strong>
-          <span class="metric-sub">Belum di-push ke remote / belum diuji boot</span>
+          <span class="metric-label">Hardware Gate (core-test01)</span>
+          <strong class="metric-value text-amber">PAUSED / FAIL-CLOSED</strong>
+          <span class="metric-sub">X.509 SPKI &amp; 102 early-ramdisk modules blocked</span>
         </div>
       </section>
 
       <section class="panel span-2">
         <div class="panel-header">
-          <h2>Fase A — Audit Remote GitHub &amp; Akar Masalah Actions</h2>
+          <h2>Audit Ulang Commit Terbaru (`d2de191f161f`) &amp; Kesiapan Source Tree</h2>
           <span class="mono muted" id="remoteHead">HEAD: memuat...</span>
         </div>
         <ul class="finding-list" id="rootCauses"></ul>
@@ -67,7 +67,7 @@
 
       <section class="panel">
         <div class="panel-header">
-          <h2>Hasil Eksekusi Gate Lokal</h2>
+          <h2>Eksekusi Gate &amp; 35 Unit Test</h2>
         </div>
         <div class="gate-list" id="gateList"></div>
       </section>
@@ -81,7 +81,7 @@
             <thead>
               <tr>
                 <th>Komponen</th>
-                <th>Path</th>
+                <th>Path Kleaf</th>
                 <th>Commit SHA-1</th>
               </tr>
             </thead>
@@ -92,7 +92,7 @@
 
       <section class="panel span-2">
         <div class="panel-header">
-          <h2>Fase C — Target Bazel Terverifikasi (`tools/bazel query`)</h2>
+          <h2>Arsitektur Target Bazel (In-Repo `//common:kernel_aarch64` + Vendor Mixed Build)</h2>
           <span class="mono muted">Variant: perf</span>
         </div>
         <div class="table-wrap">
@@ -100,8 +100,8 @@
             <thead>
               <tr>
                 <th>Label Bazel</th>
-                <th>Aturan / Macro</th>
-                <th>Peran dalam Mixed Build</th>
+                <th>Aturan / Binding</th>
+                <th>Peran dalam Source Tree</th>
               </tr>
             </thead>
             <tbody id="targetsTable"></tbody>
@@ -111,11 +111,13 @@
 
       <section class="panel span-2">
         <div class="panel-header">
-          <h2>Patch Termux Siap Terap (Hanya 6 File Repository Umbrella)</h2>
+          <h2>Kit Transisi Real Kernel Source Tree (`arch/`, `drivers/`, `include/`, `kernel/`, `mm/`)</h2>
           <div class="inline-actions">
-            <button id="copyPatchBtn" class="btn btn-secondary" type="button">Salin Script Patch</button>
+            <button id="copyPatchBtn" class="btn btn-secondary" type="button">
+              Salin Kit Transisi (8 File)
+            </button>
             <button id="copyOverlayBtn" class="btn btn-secondary" type="button">
-              Salin Script Reuse Workspace 19 GB
+              Salin Perintah Import Lokal Termux
             </button>
           </div>
         </div>
@@ -123,7 +125,7 @@
           <table>
             <thead>
               <tr>
-                <th>File Repository</th>
+                <th>File Delta (di atas `d2de191f161f`)</th>
                 <th>Baris</th>
                 <th>Ukuran</th>
                 <th>SHA-256</th>
@@ -132,13 +134,13 @@
             <tbody id="bundleTable"></tbody>
           </table>
         </div>
-        <pre class="code-box" id="patchPreview">Memuat script Termux...</pre>
+        <pre class="code-box" id="patchPreview">Memuat script transisi source tree...</pre>
       </section>
     </main>
 
     <script>
       let cachedPatch = "";
-      let cachedOverlay = "";
+      let cachedImport = "";
 
       async function loadConsole() {
         const gatesStatus = document.getElementById("gatesStatus");
@@ -150,17 +152,17 @@
         ]);
         const data = await statusRes.json();
         cachedPatch = await patchRes.text();
-        cachedOverlay = await overlayRes.text();
+        cachedImport = await overlayRes.text();
 
-        gatesStatus.textContent = data.all_gates_passed ? "PASS (5 / 5)" : "FAIL";
+        gatesStatus.textContent = data.all_gates_passed ? "PASS (5 / 5 GATES)" : "FAIL";
         gatesStatus.className =
           "metric-value " + (data.all_gates_passed ? "text-emerald" : "text-red");
         document.getElementById("remoteHead").textContent =
-          `mystivara-creator/Umbrella-Project@main (${data.remote_audit.remote_head_sha.slice(0, 7)}) | workflow #${data.remote_audit.workflow_id}`;
+          `mystivara-creator/Umbrella-Project@main (${data.remote_audit.remote_head_sha.slice(0, 12)})`;
 
         const causesEl = document.getElementById("rootCauses");
         causesEl.innerHTML = "";
-        for (const item of data.remote_audit.root_causes) {
+        for (const item of data.remote_audit.findings) {
           const li = document.createElement("li");
           li.textContent = item;
           causesEl.appendChild(li);
@@ -230,7 +232,7 @@
         setTimeout(() => (e.target.textContent = orig), 1600);
       });
       document.getElementById("copyOverlayBtn").addEventListener("click", async (e) => {
-        await navigator.clipboard.writeText(cachedOverlay);
+        await navigator.clipboard.writeText(cachedImport);
         const orig = e.target.textContent;
         e.target.textContent = "Tersalin!";
         setTimeout(() => (e.target.textContent = orig), 1600);
