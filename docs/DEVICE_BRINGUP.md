@@ -92,3 +92,47 @@ does not integrate KernelSU; preservation of the existing root setup must be
 assessed from the boot layout. Host tests and successful compilation do not
 authorize a flash.
 
+### First temporary-boot candidate
+
+The supplied active-slot backup has a v4 header, an uncompressed ARM64 kernel,
+an empty boot ramdisk and a 96 MiB partition. Its checksums and original AVB
+SHA256_RSA4096 signature/hash verify. Runtime metadata resolves the two unknown
+symbols to retained stock modules: `coldstart_app_tasks` belongs to `metis`,
+and `ufs_xiaomi_comp` belongs to `ufs_qcom`.
+
+For the kernel-only deployment, all 20,832 imports in the 362-module baseline
+are accounted for: 18,399 core CRC matches and 2,433 edges to retained stock
+modules. Two matching core symbols (`skb_checksum` and `skb_checksum_help`)
+lack runtime owner entries and are qualified by their vmlinux export CRCs.
+This scope does not validate replacement vendor modules and does not cover
+the imports of every one of the 443 loaded modules.
+
+`tools/prepare_core_test.py` prepares the observed v4, empty-ramdisk layout.
+It verifies the collected checksums, unlocked state, stock configuration,
+core CRCs and partition capacity before writing a candidate. The boot header
+and empty ramdisk are preserved, the old kernel certificate is discarded,
+and the outer AVB hash is regenerated with algorithm NONE. The original
+rollback index and property descriptors are retained. This is an unsigned
+temporary-boot candidate; it is not OEM signed or approved for partition flash.
+
+The external `avbtool.py` is pinned to
+`LineageOS/android_external_avb@cb5eae91a6b83e1394882decbf6de133239107e1`,
+with a SHA-256 checked by the preparer. No private signing key is used.
+Reproduction, using that exact tool and the supplied local baseline:
+
+```sh
+python3 tools/prepare_core_test.py \
+  --device-baseline /path/to/unpacked-device-baseline \
+  --stock-modules /path/to/abi-baseline-combined.json \
+  --dist-dir /path/to/build-dist \
+  --avbtool /path/to/pinned/avbtool.py \
+  --output-dir /path/to/new-candidate-directory
+```
+
+The output includes `boot.img` and `candidate-report.json`. Check the report
+and use a temporary fastboot boot only if supported by the target bootloader.
+Do not substitute a flash command when temporary boot is unavailable. Root
+persistence, bootloader acceptance and peripheral behavior still require the
+physical test. The first candidate is a baseline rebuild, without new runtime
+performance tuning.
+
