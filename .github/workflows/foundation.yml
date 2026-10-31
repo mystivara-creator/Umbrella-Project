@@ -9,6 +9,7 @@ on:
       - 'config/devices/**'
       - 'config/sources/**'
       - 'config/keys/**'
+      - 'config/testing/**'
       - 'patches/**'
       - 'tools/**'
       - 'tests/**'

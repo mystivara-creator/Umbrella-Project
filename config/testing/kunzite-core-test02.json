@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "scope": "temporary-boot-only",
+  "target_runtime_verified": false,
+  "flash_approved": false,
+  "kernel_sha256": "9bd768b41daa60a10ddc95b1b6611d1739b9332d14e2d95c5c373662b9037a0d",
+  "stock_boot_sha256": "4ec2b6b9f4cb93a760107eceaa79ad7eabab9a5559b3c73fdece83b0f9c9431d",
+  "stock_init_boot_sha256": "d8fbed2cd0cc925c860e7edbc1b9eec28bed049abb715ff0038517cd67ebd329",
+  "stock_lkm_sha256": "8d610b3070d4aa6fb116008c2e2caf4e3972aa73744d9106dc257a50e9bda66d",
+  "stock_early_log_sha256": "f6be606928b123b7bbe83c903cde56ffc916b89af380bed7b5704bd6f6c10068",
+  "stock_lkm_name": "kernelsu",
+  "stock_version_observed": 33355,
+  "stock_kernel_release": "6.6.118-android15-8-ge56cf6b09cca-ab15511674-4k",
+  "evidence": {
+    "native_modules_audited": 463,
+    "named_struct_union_layouts_compared": 10650,
+    "named_layout_differences_found": 0,
+    "lkm_references_with_matching_btf_types": 203,
+    "lkm_references_without_comparable_btf": 24
+  },
+  "limitations": [
+    "KernelSU is dynamically linked by ksuinit and has an empty __versions section; it is not a native CRC pass",
+    "This exact stock LKM is observed working only on the stock kernel",
+    "The 24 references lacking comparable BTF and runtime hook behavior remain unqualified",
+    "Persistent-log recovery through installed OrangeFox has not been verified"
+  ]
+}

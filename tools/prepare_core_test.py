@@ -19,6 +19,7 @@ import tempfile
 from audit_stock_module_abi import normalize_modules
 from audit_core_module_policy import audit_module_policy, stock_boot_kernel
 from verify_build_artifacts import CRITICAL_CONFIGS, extract_embedded_kconfig, parse_kconfig
+from verify_build_artifacts import extract_elf_modinfo
 
 ROOT = Path(__file__).resolve().parents[1]
 AVBTOOL_SHA256 = "aa080bb3dd613cbbcaea410a8cff62225811fc79a4af05613a63ec3acec7ab92"
@@ -142,6 +143,39 @@ def boot_payload(stock, kernel):
     return bytes(page) + kernel + bytes((-len(kernel)) % 4096)
 
 
+def review_stock_lkm(review, baseline_root, checked, image, lkm, early_log, uncovered):
+    """Account for one pinned dynamic LKM; this is not a target runtime pass."""
+    if (review.get("scope") != "temporary-boot-only"
+            or review.get("target_runtime_verified") is not False
+            or review.get("flash_approved") is not False or uncovered != {"kernelsu"}):
+        raise ValueError("Temporary root review cannot exempt other uncovered modules")
+    inputs = [(baseline_root / "boot-backup.img", "stock_boot_sha256"),
+              (baseline_root / "init_boot-backup.img", "stock_init_boot_sha256"),
+              (image, "kernel_sha256"), (lkm, "stock_lkm_sha256"),
+              (early_log, "stock_early_log_sha256")]
+    if (baseline_root / "init_boot-backup.img").resolve() not in checked:
+        raise ValueError("init_boot backup is not covered by baseline checksums")
+    for path, key in inputs:
+        if sha(path) != review.get(key):
+            raise ValueError("Temporary root review input checksum mismatch: " + key)
+    info = extract_elf_modinfo(lkm)
+    if info.get("name") != "kernelsu":
+        raise ValueError("Temporary root review requires the pinned KernelSU module")
+    log = early_log.read_text(errors="replace")
+    for needle in (review["stock_kernel_release"],
+                   "welcome to KernelSU version " + str(review["stock_version_observed"]),
+                   "init is init.real"):
+        if needle not in log:
+            raise ValueError("Stock early log does not establish the reviewed root baseline")
+    return {"kind": "pinned stock dynamic LKM, temporary diagnostics only",
+            "module": "kernelsu", "module_sha256": review["stock_lkm_sha256"],
+            "init_boot_sha256": review["stock_init_boot_sha256"],
+            "candidate_kernel_sha256": review["kernel_sha256"],
+            "native_crc_pass": False, "target_runtime_verified": False,
+            "stock_loading_observed": True, "flash_approved": False,
+            "evidence": review["evidence"], "limitations": review["limitations"]}
+
+
 def run(*args):
     subprocess.run(list(map(str, args)), check=True)
 
@@ -153,6 +187,10 @@ def main():
     p.add_argument("--dist-dir", type=Path, required=True)
     p.add_argument("--avbtool", type=Path, required=True)
     p.add_argument("--output-dir", type=Path, required=True)
+    p.add_argument("--allow-stock-kernelsu-lkm-for-temporary-boot", action="store_true",
+                   help="Use the exact-image engineering review for one stock dynamic LKM; no flash approval")
+    p.add_argument("--stock-kernelsu-module", type=Path)
+    p.add_argument("--stock-early-log", type=Path)
     args = p.parse_args()
     args.device_baseline = args.device_baseline.resolve()
     args.avbtool = args.avbtool.resolve()
@@ -193,9 +231,24 @@ def main():
     if not audit["scoped_baseline_passed"]:
         raise ValueError("Kernel-only ABI check failed: " + json.dumps(audit["counts"]))
     loaded = set((args.device_baseline / "loaded-modules.txt").read_text().split())
+    dynamic_lkm = None
+    policy_loaded = loaded
+    if args.allow_stock_kernelsu_lkm_for_temporary_boot:
+        if args.stock_kernelsu_module is None or args.stock_early_log is None:
+            raise ValueError("The reviewed stock LKM and stock early log are required")
+        covered = {Path(name).name.removesuffix(".ko").replace("-", "_")
+                   for name, _, _ in normalize_modules(baseline)}
+        review_path = ROOT / "config/testing/kunzite-core-test02.json"
+        dynamic_lkm = review_stock_lkm(
+            json.loads(review_path.read_text()), args.device_baseline, checked,
+            args.dist_dir / "Image", args.stock_kernelsu_module, args.stock_early_log,
+            {name.replace("-", "_") for name in loaded} - covered)
+        policy_loaded = loaded - {"kernelsu"}
+    elif args.stock_kernelsu_module is not None or args.stock_early_log is not None:
+        raise ValueError("Stock root inputs require explicit temporary-boot review opt-in")
     module_policy = audit_module_policy(
         stock_boot_kernel((args.device_baseline / "boot-backup.img").read_bytes()),
-        kernel, built_cfg, baseline, loaded)
+        kernel, built_cfg, baseline, policy_loaded)
     if not module_policy["host_checks_passed"]:
         raise ValueError("Core module policy check failed; no candidate written: "
                          + json.dumps([f["status"] for f in module_policy["findings"]]))
@@ -248,6 +301,8 @@ def main():
                   "stock_modules_sha256": sha(args.stock_modules), "gki_config_diff": diff,
                   "abi": audit, "module_policy": module_policy, "partition_bytes": partition_size,
                   "loaded_module_count": len(loaded),
+                  "dynamic_lkm_review": dynamic_lkm,
+                  "native_crc_uncovered_loaded_modules": sorted(policy_loaded - covered),
                   "loaded_modules_without_import_metadata": sorted(loaded - covered),
                   "boot_header_version": 4, "boot_ramdisk_bytes": 0,
                   "source_commits": {k: v["commit"] for k, v in source["components"].items()},

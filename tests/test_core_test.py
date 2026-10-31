@@ -1,15 +1,64 @@
 """Regression checks for the temporary boot image preparation boundary."""
 import struct
+import hashlib
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from prepare_core_test import audit_core_only, boot_payload, device_properties, verify_baseline
+from prepare_core_test import audit_core_only, boot_payload, device_properties, verify_baseline, review_stock_lkm
+from test_build_pipeline import build_minimal_aarch64_ko
 
 
 class CoreTestTests(unittest.TestCase):
+    def root_review_fixture(self, root):
+        files = {"boot-backup.img": b"stock boot", "init_boot-backup.img": b"stock init",
+                 "Image": b"exact reviewed image", "kernelsu.ko": build_minimal_aarch64_ko({"name": "kernelsu"}),
+                 "early.txt": b"stock-release\nwelcome to KernelSU version 33355\ninit is init.real\n"}
+        for name, data in files.items():
+            (root / name).write_bytes(data)
+        review = {"scope": "temporary-boot-only", "target_runtime_verified": False,
+                  "flash_approved": False, "stock_kernel_release": "stock-release",
+                  "stock_version_observed": 33355, "evidence": {}, "limitations": ["target runtime unverified"]}
+        for name, key in (("boot-backup.img", "stock_boot_sha256"),
+                          ("init_boot-backup.img", "stock_init_boot_sha256"),
+                          ("Image", "kernel_sha256"), ("kernelsu.ko", "stock_lkm_sha256"),
+                          ("early.txt", "stock_early_log_sha256")):
+            review[key] = hashlib.sha256(files[name]).hexdigest()
+        return review
+
+    def test_dynamic_lkm_review_is_not_a_native_crc_or_target_runtime_pass(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = self.root_review_fixture(root)
+            result = review_stock_lkm(review, root, {(root / "init_boot-backup.img").resolve()},
+                                      root / "Image", root / "kernelsu.ko", root / "early.txt", {"kernelsu"})
+            self.assertTrue(result["stock_loading_observed"])
+            self.assertFalse(result["native_crc_pass"])
+            self.assertFalse(result["target_runtime_verified"])
+            self.assertFalse(result["flash_approved"])
+
+    def test_dynamic_lkm_review_rejects_other_uncovered_modules_and_changed_image(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = self.root_review_fixture(root)
+            args = (review, root, {(root / "init_boot-backup.img").resolve()},
+                    root / "Image", root / "kernelsu.ko", root / "early.txt")
+            with self.assertRaisesRegex(ValueError, "other uncovered"):
+                review_stock_lkm(*args, {"kernelsu", "unreviewed_driver"})
+            (root / "Image").write_bytes(b"different build")
+            with self.assertRaisesRegex(ValueError, "kernel_sha256"):
+                review_stock_lkm(*args, {"kernelsu"})
+
+    def test_dynamic_lkm_review_requires_checksummed_init_boot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = self.root_review_fixture(root)
+            with self.assertRaisesRegex(ValueError, "baseline checksums"):
+                review_stock_lkm(review, root, set(), root / "Image", root / "kernelsu.ko",
+                                 root / "early.txt", {"kernelsu"})
+
     def test_core_mismatch_and_missing_export_are_never_resolved_by_retention(self):
         baseline = {"modules": [{"module": "vendor/client.ko", "imported_symbols": {
             "changed": "0x00000001", "absent": "0x00000002"}}]}
