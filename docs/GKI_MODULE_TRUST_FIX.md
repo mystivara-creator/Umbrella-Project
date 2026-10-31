@@ -75,3 +75,27 @@ certificate and embedded configuration. That artifact is still an engineering
 build: KernelSU's dynamically resolved module, complete runtime startup and
 the cause of the observed hang remain unverified. The new source patch does
 not grant flash approval or claim a successful device boot.
+
+## Successful rebuild and independent artifact check
+
+[CI run 41180772543](https://github.com/mystivara-creator/Umbrella-Project/actions/runs/41180772543)
+completed successfully for `a201edb6b8c30791fb302d44c9d5d5dc8aa878a6`.
+The downloaded artifact archive matches GitHub's SHA-256 digest
+`d976960dde6ae8b84bc33503382f82416c621605f7ef4c9cdcd1db324a9a878d`.
+
+The new kernel Image SHA-256 is
+`9bd768b41daa60a10ddc95b1b6611d1739b9332d14e2d95c5c373662b9037a0d`.
+It contains two X.509 certificates, including the exact qualified stock
+certificate. The actual certificate extracted from this new Image successfully
+verifies the supplied bluetooth.ko content signature. Thus the signing-anchor
+discontinuity found in core-test01 is corrected in the compiled artifact.
+
+The expanded 442-module CRC scope was rerun against the new GKI export table:
+22,706 core matches, 2,761 retained-provider imports, zero findings. The only
+Kconfig differences from the original running kernel are the two previously
+qualified debug-compression options and the specified SYSTEM_TRUSTED_KEYS path.
+
+These checks do not qualify the separately loaded KernelSU LKM or establish
+successful Android startup. A complete boot candidate, usable failed-boot
+diagnostics and subsequent controlled hardware boot qualification are still
+required; permanent flashing is not approved.
