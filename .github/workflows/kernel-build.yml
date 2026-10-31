@@ -29,6 +29,8 @@ on:
       - 'tools/import_kernel_tree.py'
       - 'tools/setup_kleaf_workspace.py'
       - 'tools/verify_build_artifacts.py'
+      - 'tools/gki_module_trust.py'
+      - 'config/keys/**'
       - 'tests/test_build_pipeline.py'
       - 'tests/test_kernel_tree_import.py'
       - 'arch/**'
@@ -305,4 +307,5 @@ jobs:
           path: ${{ runner.temp }}/umbrella-diagnostics/
           retention-days: 7
           if-no-files-found: ignore
+
 

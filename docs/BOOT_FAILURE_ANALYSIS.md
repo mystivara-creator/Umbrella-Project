@@ -91,20 +91,19 @@ The first six kernel links use the **exact ACK revision used by the build**,
 
 ## Remaining evidence and supported repair route
 
-The stock and candidate embedded module-signing public keys still differ, as
-recorded in [test01 audit](TEST01_AUDIT.md). Retained system GKI modules were not
-included as binaries in either archive, so their actual signatures have not
-yet been verified against the extracted stock certificate. Their import CRCs
-are available, but CRCs cannot substitute for signature verification.
+The subsequently supplied stock bluetooth.ko now proves a module-trust
+incompatibility in the withdrawn candidate. Its PKCS#7 signature verifies
+against the certificate extracted from the stock kernel; the certificate in
+the candidate cannot resolve its signer. It exports 54 symbols protected by
+the candidate. A one-byte content modification is correctly rejected by the
+stock-certificate verification. See [verified trust failure and repair](GKI_MODULE_TRUST_FIX.md).
 
-The next narrow read-only input is one representative loaded GKI module with
-protected exports, such as the stock bluetooth.ko, for offline PKCS#7 signature
-verification. If that confirms the trust discontinuity, the upstream-supported
-repair is to build the verified stock **public** certificate into the candidate
-keyring using CONFIG_SYSTEM_TRUSTED_KEYS and recheck the produced binary and
-module signatures. Signature protection must remain enabled. This repairs a
-module-trust incompatibility; it cannot by itself prove the Android boot hang
-is solved.
+The source repair retains the exact verified stock **public** certificate in
+the candidate keyring through CONFIG_SYSTEM_TRUSTED_KEYS, with signature
+protection enabled. Build verification now checks its exact certificate and
+public-key fingerprints and the embedded configuration. A newly compiled
+Image still needs those checks; no hardware result is implied by the source
+patch, and the Android boot hang remains a separate unconfirmed diagnosis.
 
 The stalled boot still has no captured failed-boot kernel/userspace log and no
 confirmed running-candidate identity. Root persistence, module initialization,

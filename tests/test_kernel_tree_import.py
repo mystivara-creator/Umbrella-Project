@@ -55,6 +55,11 @@ def create_synthetic_upstream_kernel_repo(path: Path, sublevel: int = 118, inclu
         (path / "kunzite.bzl").write_text("def define_kunzite():\n    pass\n", encoding="utf-8")
 
     files = {
+        "arch/arm64/configs/gki_defconfig": (
+            "CONFIG_MODULE_SIG=y\nCONFIG_MODULE_SIG_PROTECT=y\n"
+            "CONFIG_CRYPTO_SHA2_ARM64_CE=y\nCONFIG_CRYPTO_SHA512_ARM64_CE=y\n"
+            "CONFIG_CRYPTO_POLYVAL_ARM64_CE=y\nCONFIG_CRYPTO_AES_ARM64_CE_BLK=y\n"
+            "CONFIG_TRACE_MMIO_ACCESS=y\nCONFIG_CRC_CCITT=y\nCONFIG_XZ_DEC=y\n"),
         ".clang-format": "BasedOnStyle: LLVM\n",
         ".rustfmt.toml": "edition = \"2021\"\n",
         "arch/arm64/Makefile": "# arm64 Makefile\n",

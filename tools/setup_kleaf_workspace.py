@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from gki_module_trust import check_kernel_source
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_MANIFEST = ROOT / "config/sources/kernel-source.json"
@@ -472,6 +473,9 @@ def main() -> None:
                 apply_component_patches(umbrella_root, cname, ws / components[cname]["path"])
             )
 
+    if manifest.get("gki_module_trust"):
+        check_kernel_source(ws / components["common_kernel"]["path"], manifest["gki_module_trust"])
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
         aosp_futs = {
             pool.submit(
@@ -523,3 +527,4 @@ if __name__ == "__main__":
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
+

@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import struct
+import subprocess
 import sys
 import zlib
 from pathlib import Path
@@ -191,6 +192,7 @@ def main() -> None:
     errors: list[str] = []
     warnings: list[str] = []
     compatibility_blockers: list[str] = []
+    module_trust_report = {}
 
     image_path = dist_dir / "Image"
     symvers_path = dist_dir / "Module.symvers"
@@ -209,6 +211,13 @@ def main() -> None:
         errors.append("Missing arm64 kernel Image in dist directory")
     if not symvers_path.is_file():
         errors.append("Missing Module.symvers in dist directory")
+
+    if manifest.get("gki_module_trust") and image_path.is_file():
+        from gki_module_trust import inspect_image
+        try:
+            module_trust_report = inspect_image(image_path, manifest["gki_module_trust"])
+        except (ValueError, OSError, subprocess.SubprocessError) as exc:
+            errors.append(f"GKI stock module trust check failed: {exc}")
 
     gki_config_report: dict[str, object] = {}
     gki_config_source = "dist/gki.config"
@@ -508,6 +517,7 @@ def main() -> None:
         "core_artifacts": artifacts_summary,
         "kconfig": config_report,
         "gki_kconfig": gki_config_report,
+        "gki_module_trust": module_trust_report,
         "gki_config_source": gki_config_source if gki_config_report else None,
         "symvers": symvers_report,
         "modules": modules_report,

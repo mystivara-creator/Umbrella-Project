@@ -75,5 +75,15 @@
     "expected_sha256": "b4bdfa788a4f501ff39d3ed8a6729d728aa4cea8e9fb651ab816383eb8e805e1",
     "tracked_in_git": false
   },
-  "notes": "Qualcomm Kleaf mixed build: //common:kernel_aarch64 provides GKI 6.6.118-android15-8 core Image/boot.img matching stock ge56cf6b09cca; //msm-kernel:kunzite_perf builds Qualcomm/Xiaomi vendor modules and kunzite DTBs/DTBO against frozen android15-8 KMI. Flash safety remains unapproved until post-build symbol/CRC/boot validation."
+  "notes": "Qualcomm Kleaf mixed build: //common:kernel_aarch64 provides GKI 6.6.118-android15-8 core Image/boot.img matching stock ge56cf6b09cca; //msm-kernel:kunzite_perf builds Qualcomm/Xiaomi vendor modules and kunzite DTBs/DTBO against frozen android15-8 KMI. Flash safety remains unapproved until post-build symbol/CRC/boot validation.",
+  "gki_module_trust": {
+    "certificate_path": "config/keys/kunzite-stock-module-signing.pem",
+    "kernel_certificate_path": "certs/umbrella-kunzite-stock.pem",
+    "certificate_sha256": "123c66f6dff49a034d0e586fcd4086563e5c3c79500951fd98f00a76402326ee",
+    "public_key_sha256": "0c0c619ed5e0ec136f7acf2e0e997ea5b236a2089c1d6a21074fab0629cf4acd",
+    "patch_path": "patches/common_kernel/0001-retain-kunzite-stock-module-trust.patch",
+    "patch_sha256": "098d8816e0a7355936dd3365fb88e153bc98b680eac016013746ec99e2cc4bf5",
+    "stock_boot_sha256": "4ec2b6b9f4cb93a760107eceaa79ad7eabab9a5559b3c73fdece83b0f9c9431d",
+    "verified_module_sha256": "3abdfc401218a233fe2f01d06e747c32bbbc1bd1204f989b298859f3f6f6fc04"
+  }
 }

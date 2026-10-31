@@ -4,6 +4,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from gki_module_trust import audit_trust_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -49,6 +50,8 @@ def audit_source_manifest(data: dict, repo_root: Path = ROOT) -> None:
         raise ValueError(f"Invalid source_status: {status}")
 
     if status == "verified":
+        if data.get("gki_module_trust"):
+            audit_trust_policy(repo_root, data["gki_module_trust"])
         for key in ("repository", "commit", "defconfig", "toolchain", "clang_version"):
             val = data.get(key)
             if not isinstance(val, str) or not val.strip():
@@ -150,3 +153,4 @@ if __name__ == "__main__":
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
         print(f"Source audit FAIL: {exc}", file=sys.stderr)
         sys.exit(1)
+

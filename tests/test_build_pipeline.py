@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import source_audit  # noqa: E402
 import verify_build_artifacts  # noqa: E402
+from gki_module_trust import certificate_der
 
 
 def build_minimal_aarch64_ko(modinfo_kv: dict[str, str]) -> bytes:
@@ -153,7 +154,6 @@ class BuildPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             dist = Path(tmp) / "dist"
             dist.mkdir()
-            (dist / "Image").write_bytes(b"\x00" * 4096)
             (dist / ".config").write_text(
                 "\n".join(
                     [
@@ -198,6 +198,15 @@ class BuildPipelineTests(unittest.TestCase):
             )
             (dist / "boot.img").write_bytes(boot_hdr)
 
+            trust = json.loads((ROOT / "config/sources/kernel-source.json").read_text())["gki_module_trust"]
+            trust_config = ('CONFIG_MODULE_SIG_PROTECT=y\nCONFIG_SYSTEM_TRUSTED_KEYRING=y\n'
+                            'CONFIG_SYSTEM_TRUSTED_KEYS=' + json.dumps(trust["kernel_certificate_path"]) + '\n')
+            valid_gki = (dist / ".config").read_text().replace(
+                "# CONFIG_MODULE_SIG_ALL is not set", "CONFIG_MODULE_SIG_ALL=y") + trust_config
+            public_cert = certificate_der(ROOT / trust["certificate_path"])
+            (dist / "Image").write_bytes(b"kernel-prefix" + public_cert + b"IKCFG_ST"
+                                         + gzip.compress(valid_gki.encode()) + b"IKCFG_ED")
+
             report_file = Path(tmp) / "report.json"
             proc = subprocess.run(
                 [
@@ -223,8 +232,6 @@ class BuildPipelineTests(unittest.TestCase):
 
             # A present GKI config must be audited, independently of vendor config.
             gki = dist / "gki.config"
-            valid_gki = (dist / ".config").read_text().replace(
-                "# CONFIG_MODULE_SIG_ALL is not set", "CONFIG_MODULE_SIG_ALL=y")
             gki.write_text(valid_gki)
             command = [sys.executable, str(ROOT / "tools/verify_build_artifacts.py"),
                        "--dist-dir", str(dist), "--report-out", str(report_file)]
@@ -261,7 +268,7 @@ class BuildPipelineTests(unittest.TestCase):
 
             gki.unlink()
             (dist / "Image").write_bytes(
-                b"kernel-prefix" + b"IKCFG_ST" + gzip.compress(valid_gki.encode()) + b"IKCFG_ED")
+                b"kernel-prefix" + public_cert + b"IKCFG_ST" + gzip.compress(valid_gki.encode()) + b"IKCFG_ED")
             recovered = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(recovered.returncode, 0, recovered.stderr)
             recovered_report = json.loads(report_file.read_text())

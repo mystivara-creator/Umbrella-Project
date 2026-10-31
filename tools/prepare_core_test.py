@@ -175,8 +175,16 @@ def main():
         diff = {k: {"stock": stock_cfg.get(k), "built": built_cfg.get(k)}
                 for k in sorted(stock_cfg.keys() | built_cfg.keys())
                 if stock_cfg.get(k) != built_cfg.get(k)}
-        if set(diff) - DEBUG_CONFIGS:
-            raise ValueError("GKI configuration differs beyond the qualified debug-compression options")
+        allowed = set(DEBUG_CONFIGS)
+        trust = source.get("gki_module_trust")
+        if trust:
+            from gki_module_trust import inspect_image
+            inspect_image(args.dist_dir / "Image", trust)
+            if (stock_cfg.get("CONFIG_SYSTEM_TRUSTED_KEYS") == '\"\"'
+                    and built_cfg.get("CONFIG_SYSTEM_TRUSTED_KEYS") == json.dumps(trust["kernel_certificate_path"])):
+                allowed.add("CONFIG_SYSTEM_TRUSTED_KEYS")
+        if set(diff) - allowed:
+            raise ValueError("GKI configuration differs beyond qualified debug-compression and public-trust options")
         if any(built_cfg.get(k) != v for k, v in {**CRITICAL_CONFIGS, "CONFIG_MODULE_SIG_ALL": "y"}.items()):
             raise ValueError("Critical GKI configuration mismatch")
     baseline = json.loads(args.stock_modules.read_text())

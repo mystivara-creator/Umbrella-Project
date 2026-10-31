@@ -239,6 +239,12 @@ def import_tree(
         if up_readme:
             (target_repo / "docs/README.upstream-kernel.md").write_text(up_readme, encoding="utf-8")
 
+        if comp_key == "common_kernel" and manifest.get("gki_module_trust"):
+            from setup_kleaf_workspace import apply_component_patches
+            from gki_module_trust import check_kernel_source
+            apply_component_patches(target_repo, comp_key, target_repo)
+            check_kernel_source(target_repo, manifest["gki_module_trust"])
+
         if comp_key == "msm_kernel":
             dt_comp = manifest["components"]["kernel_devicetree"]
             dt_sha = dt_comp["commit"]
